@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>スクワット測定 (日本語版)</title>
+    <title>Squat Analyzer Pro (Cloud Sync)</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -11,7 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        body { margin: 0; padding: 0; background-color: #222; font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; overflow: hidden; }
+        body { margin: 0; padding: 0; background-color: #000; font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; overflow: hidden; }
         .container { position: relative; width: 100vw; height: 100vh; }
         
         #input_video, #output_canvas { 
@@ -52,7 +52,7 @@
             box-shadow: 0 0 15px #2196f3;
         }
 
-        /* 情報パネル (文字サイズ大) */
+        /* 情報パネル */
         .info-panel {
             position: absolute; top: 20px; left: 90px;
             background: rgba(0, 0, 0, 0.7); padding: 15px; border-radius: 12px;
@@ -141,15 +141,24 @@
             background: white; border-radius: 8px; padding: 5px; transform: none !important; 
         }
 
-        input, select, button.start-btn, button.dl-btn {
+        input, select, button {
             padding: 15px; font-size: 20px; margin: 10px; border-radius: 8px; border: none; width: 80%; max-width: 300px;
         }
         input { text-align: center; }
-        button.start-btn { background: #00e676; color: #003300; font-weight: bold; margin-top: 30px; padding: 20px;}
-        button.dl-btn { background: #2196F3; color: white; margin-top: 10px; }
-        button.close-btn { background: #555; color: white; margin-top: 30px; padding: 15px 40px; border-radius: 8px; font-size: 18px; border: none;}
         
-        /* デバッグ表示は目立たなく */
+        button.start-btn { background: #00e676; color: #003300; font-weight: bold; margin-top: 30px; padding: 20px;}
+        
+        /* DB送信ボタン (メイン) */
+        button.cloud-btn { 
+            background: #2979ff; color: white; margin-top: 10px; padding: 15px; font-weight: bold;
+            box-shadow: 0 4px 15px rgba(41, 121, 255, 0.4);
+        }
+        /* CSVボタン (サブ) */
+        button.dl-btn { 
+            background: #555; color: white; margin-top: 10px; font-size: 14px; padding: 10px;
+        }
+        button.close-btn { background: #333; color: #aaa; margin-top: 30px; padding: 15px; font-size: 16px; border: 1px solid #555;}
+        
         .angle-monitor { display: none; } 
     </style>
 </head>
@@ -240,12 +249,18 @@
         <div style="color:white; margin-bottom:5px; font-weight:bold;">▼ 深さとエラー (赤色は失敗)</div>
         <div class="chart-container"><canvas id="depthChart"></canvas></div>
         
-        <button class="dl-btn" onclick="downloadCSV()">結果を保存する (CSV)</button>
+        <button class="cloud-btn" id="cloud-btn" onclick="sendToGoogleSheets()">クラウドに保存 (DB送信)</button>
+        
+        <button class="dl-btn" onclick="downloadCSV()">CSVで保存 (予備)</button>
         <button class="close-btn" onclick="location.reload()">タイトルに戻る</button>
     </div>
 
 <script>
-    // 設定
+    // ==========================================
+    // 設定 & 定数
+    // ==========================================
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbyKqUnAi2JcfbQCzeI4498mTYEXFDCo1itE9pdnOQB9JJfyFHGvM4Z2SpkZsMjGRPsk/exec";
+    
     const KNEE_IN_THRESHOLD = 0.04; 
     const BAD_POSTURE_ANGLE = 75;
     const RESET_ANGLE = 160;   
@@ -295,6 +310,9 @@
     const startScreen = document.getElementById('start-screen');
     const resultScreen = document.getElementById('result-screen');
 
+    // ==========================================
+    // ヘルパー
+    // ==========================================
     function calculateAngle(a, b, c, width, height) {
         const ax = a.x * width, ay = a.y * height;
         const bx = b.x * width, by = b.y * height;
@@ -305,13 +323,11 @@
         return angle;
     }
 
-    // 音声読み上げ (日本語)
     function speak(text, force = false) {
         const now = Date.now();
         if (force || (now - lastSpeechTime > SPEECH_COOLDOWN)) {
             const uttr = new SpeechSynthesisUtterance(text);
-            uttr.lang = 'ja-JP'; // 日本語
-            uttr.rate = 1.2;
+            uttr.lang = 'ja-JP'; uttr.rate = 1.2;
             window.speechSynthesis.speak(uttr);
             lastSpeechTime = now;
         }
@@ -319,15 +335,13 @@
     function getNowStr() { return new Date().toLocaleString(); }
 
     function updateUIOverlays(angle) {
-        const minAng = 180;
-        const maxAng = 70;
+        const minAng = 180, maxAng = 70;
         let percentage = (minAng - angle) / (minAng - maxAng) * 100;
         if(percentage < 0) percentage = 0; if(percentage > 100) percentage = 100;
 
         depthBar.style.height = percentage + "%";
-        
         if (angle < DEPTH_THRESHOLD) {
-            depthBar.style.backgroundColor = "#00e676"; // 鮮やかな緑
+            depthBar.style.backgroundColor = "#00e676"; 
         } else {
             depthBar.style.backgroundColor = "#00bcd4"; 
         }
@@ -337,7 +351,6 @@
         targetLabel.style.top = `calc(${targetPerc}% - 12px)`; 
 
         if (appMode === "cs30") return;
-
         if (appMode === "training_self") {
             pacerGhost.style.top = percentage + "%"; 
         } 
@@ -366,6 +379,9 @@
         }
     }
 
+    // ==========================================
+    // MediaPipe Logic
+    // ==========================================
     function onResults(results) {
         if(isFinished) return;
 
@@ -398,8 +414,7 @@
             let side = "RIGHT";
             let sideText = "右足";
             if (lms[11].visibility > lms[12].visibility && lms[23].visibility > lms[24].visibility) {
-                side = "LEFT";
-                sideText = "左足";
+                side = "LEFT"; sideText = "左足";
             }
             sideDisplay.innerText = sideText;
 
@@ -450,7 +465,6 @@
                     warningDisplay.style.display = "none";
                 }
 
-                // カウントロジック
                 if ((appMode === "cs30" || appMode === "training_slow") && !testStartTime) {
                     // 待機
                 } else {
@@ -536,6 +550,9 @@
         height: 720
     });
 
+    // ==========================================
+    // アプリ制御
+    // ==========================================
     function startApp() {
         patientID = document.getElementById('patient-id').value || "Guest";
         appMode = document.getElementById('mode-select').value;
@@ -629,7 +646,6 @@
         const labels = dataLogs.map(d => d.rep);
         const speeds = dataLogs.map(d => d.duration);
         const depths = dataLogs.map(d => d.depth);
-        // エラーなら赤、OKなら青
         const depthColors = dataLogs.map(d => (d.note === "Perfect") ? '#2196f3' : '#f44336');
 
         new Chart(document.getElementById('speedChart'), {
@@ -661,6 +677,36 @@
                 scales: { y: { reverse: true, min: 60, max: 180 } }, 
                 plugins: { legend: { display: false } }
             }
+        });
+    }
+
+    // ★ DB送信機能 ★
+    function sendToGoogleSheets() {
+        if(dataLogs.length === 0) {
+            alert("送信するデータがありません");
+            return;
+        }
+
+        const btn = document.getElementById('cloud-btn');
+        const originalText = btn.innerText;
+        btn.innerText = "送信中...";
+        btn.disabled = true;
+
+        fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify(dataLogs),
+            headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+            },
+        })
+        .then(response => {
+            alert("クラウドへの保存が完了しました！");
+            btn.innerText = "送信完了";
+        })
+        .catch(error => {
+            alert("送信エラー: " + error);
+            btn.innerText = originalText;
+            btn.disabled = false;
         });
     }
 
