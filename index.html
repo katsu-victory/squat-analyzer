@@ -3,12 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Squat Analyzer Pro (Cloud Sync)</title>
+    <title>Squat Analyzer (Game Mode)</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="スクワット測定">
+
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
     <style>
         body { margin: 0; padding: 0; background-color: #000; font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; overflow: hidden; }
@@ -21,7 +28,7 @@
         
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
         
-        /* 深さゲージ (左) */
+        /* 深さゲージ */
         #depth-gauge-container {
             position: absolute; left: 20px; top: 15%; bottom: 20%; width: 50px;
             background: rgba(50, 50, 50, 0.8); border-radius: 25px;
@@ -39,7 +46,7 @@
             text-shadow: 2px 2px 0 black;
         }
 
-        /* ペーサー (右) */
+        /* ペーサー */
         #pacer-container {
             position: absolute; right: 20px; top: 15%; bottom: 20%; width: 10px;
             background: rgba(255, 255, 255, 0.3); border-radius: 5px; 
@@ -61,7 +68,7 @@
         .info-label { font-size: 16px; font-weight: bold; color: #bbb; margin-bottom: 5px; }
         .info-value { font-size: 42px; font-weight: bold; color: #fff; line-height: 1.0; }
         
-        /* ペーサーカウンター (右下) */
+        /* ペーサーカウンター */
         .pacer-panel {
             position: absolute; bottom: 100px; right: 140px; 
             background: rgba(33, 150, 243, 0.9); padding: 10px; border-radius: 12px;
@@ -81,6 +88,17 @@
             background-color: rgba(255, 255, 255, 0.9); padding: 20px 40px; border-radius: 20px; 
             display: inline-block; border: 4px solid #ff1744;
         }
+
+        /* ★コンボ表示 (NEW)★ */
+        #combo-display {
+            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%) rotate(-5deg);
+            font-size: 80px; font-weight: 900; color: #ffeb3b; 
+            text-shadow: 4px 4px 0 #f57f17, -2px -2px 0 white;
+            font-style: italic; pointer-events: none; opacity: 0;
+            transition: transform 0.2s, opacity 0.5s;
+            z-index: 20;
+        }
+        .combo-active { opacity: 1 !important; transform: translate(-50%, -50%) rotate(-5deg) scale(1.2) !important; }
 
         /* ステータスランプ */
         .status-lamp {
@@ -147,13 +165,10 @@
         input { text-align: center; }
         
         button.start-btn { background: #00e676; color: #003300; font-weight: bold; margin-top: 30px; padding: 20px;}
-        
-        /* DB送信ボタン (メイン) */
         button.cloud-btn { 
             background: #2979ff; color: white; margin-top: 10px; padding: 15px; font-weight: bold;
             box-shadow: 0 4px 15px rgba(41, 121, 255, 0.4);
         }
-        /* CSVボタン (サブ) */
         button.dl-btn { 
             background: #555; color: white; margin-top: 10px; font-size: 14px; padding: 10px;
         }
@@ -205,6 +220,8 @@
                 <div class="warning-text" id="warning-display" style="display:none;"></div>
             </div>
 
+            <div id="combo-display"></div>
+
             <div class="status-lamp lamp-squat" id="status-lamp">しゃがむ</div>
 
             <div class="control-area">
@@ -231,34 +248,26 @@
 
     <div id="result-screen" class="overlay-screen">
         <div class="result-header">測定結果レポート</div>
-        
         <div style="display:flex; justify-content:space-between; width:95%; max-width:400px;">
             <div class="stat-card" style="width:48%;">
                 <div class="stat-label">合計回数</div>
                 <div class="stat-val" id="res-reps">0</div>
             </div>
             <div class="stat-card" style="width:48%;">
-                <div class="stat-label">疲労指数</div>
-                <div class="stat-val" id="res-fatigue">--</div>
+                <div class="stat-label">MAXコンボ</div>
+                <div class="stat-val" id="res-max-combo">0</div>
             </div>
         </div>
-
         <div style="color:white; margin-bottom:5px; font-weight:bold;">▼ 1回ごとの秒数 (疲れ具合)</div>
         <div class="chart-container"><canvas id="speedChart"></canvas></div>
-
         <div style="color:white; margin-bottom:5px; font-weight:bold;">▼ 深さとエラー (赤色は失敗)</div>
         <div class="chart-container"><canvas id="depthChart"></canvas></div>
-        
         <button class="cloud-btn" id="cloud-btn" onclick="sendToGoogleSheets()">クラウドに保存 (DB送信)</button>
-        
         <button class="dl-btn" onclick="downloadCSV()">CSVで保存 (予備)</button>
         <button class="close-btn" onclick="location.reload()">タイトルに戻る</button>
     </div>
 
 <script>
-    // ==========================================
-    // 設定 & 定数
-    // ==========================================
     const GAS_URL = "https://script.google.com/macros/s/AKfycbyKqUnAi2JcfbQCzeI4498mTYEXFDCo1itE9pdnOQB9JJfyFHGvM4Z2SpkZsMjGRPsk/exec";
     
     const KNEE_IN_THRESHOLD = 0.04; 
@@ -276,6 +285,11 @@
     let hasDeepSquatted = false;
     let hasSpokenGood = false;
     let lastSpeechTime = 0;
+
+    // コンボ関連
+    let combo = 0;
+    let maxCombo = 0;
+    let isCurrentRepClean = true; // 今のレップでエラーがないか
 
     let appMode = "training_self"; 
     let testStartTime = null; 
@@ -295,6 +309,7 @@
     const warningDisplay = document.getElementById('warning-display');
     const statusLamp = document.getElementById('status-lamp');
     const timerDisplay = document.getElementById('timer-display');
+    const comboDisplay = document.getElementById('combo-display'); // New
     
     const depthGaugeContainer = document.getElementById('depth-gauge-container');
     const depthBar = document.getElementById('depth-bar');
@@ -310,9 +325,6 @@
     const startScreen = document.getElementById('start-screen');
     const resultScreen = document.getElementById('result-screen');
 
-    // ==========================================
-    // ヘルパー
-    // ==========================================
     function calculateAngle(a, b, c, width, height) {
         const ax = a.x * width, ay = a.y * height;
         const bx = b.x * width, by = b.y * height;
@@ -334,12 +346,32 @@
     }
     function getNowStr() { return new Date().toLocaleString(); }
 
+    // ★ クラッカーエフェクト ★
+    function fireConfetti() {
+        confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#00e676', '#ffff00', '#2196f3']
+        });
+    }
+
+    // ★ コンボ表示エフェクト ★
+    function showCombo(val) {
+        comboDisplay.innerText = val + " COMBO!";
+        comboDisplay.classList.add("combo-active");
+        setTimeout(() => {
+            comboDisplay.classList.remove("combo-active");
+        }, 1000);
+    }
+
     function updateUIOverlays(angle) {
         const minAng = 180, maxAng = 70;
         let percentage = (minAng - angle) / (minAng - maxAng) * 100;
         if(percentage < 0) percentage = 0; if(percentage > 100) percentage = 100;
 
         depthBar.style.height = percentage + "%";
+        
         if (angle < DEPTH_THRESHOLD) {
             depthBar.style.backgroundColor = "#00e676"; 
         } else {
@@ -379,9 +411,6 @@
         }
     }
 
-    // ==========================================
-    // MediaPipe Logic
-    // ==========================================
     function onResults(results) {
         if(isFinished) return;
 
@@ -450,12 +479,14 @@
                      if (isMovementStarted) {
                         warningList.push("ひざを開いて！");
                         speak("ひざを開いて");
+                        isCurrentRepClean = false; // エラー発生
                      }
                 }
                 if (hipAngle < BAD_POSTURE_ANGLE && kneeAngle < 160) {
                     if (isMovementStarted) {
                         warningList.push("胸を張って！");
                         speak("むねをはって");
+                        isCurrentRepClean = false; // エラー発生
                      }
                 }
                 if (warningList.length > 0) {
@@ -474,6 +505,7 @@
                         currentRepMinAngle = 180;
                         hasDeepSquatted = false;
                         hasSpokenGood = false;
+                        isCurrentRepClean = true; // 新しいレップ開始時にリセット
                     }
 
                     if (isMovementStarted) {
@@ -481,7 +513,8 @@
                         if (kneeAngle < DEPTH_THRESHOLD) {
                             hasDeepSquatted = true;
                             if (!hasSpokenGood && warningList.length === 0) {
-                                speak("いい感じです", true);
+                                // ここでは音声を鳴らさず、上がった時にコンボ判定と一緒に鳴らす
+                                // speak("いい感じです", true); 
                                 hasSpokenGood = true;
                             }
                         }
@@ -491,6 +524,19 @@
                                 const duration = (Date.now() - repStartTime) / 1000;
                                 repsDisplay.innerText = counter;
                                 speedDisplay.innerText = duration.toFixed(2);
+                                
+                                // コンボ判定
+                                if (isCurrentRepClean) {
+                                    combo++;
+                                    if(combo > maxCombo) maxCombo = combo;
+                                    showCombo(combo); // コンボ表示
+                                    fireConfetti();   // 紙吹雪！
+                                    speak(combo + "コンボ！", true);
+                                } else {
+                                    combo = 0; // 失敗でリセット
+                                    speak("おしい", true);
+                                }
+
                                 const errorNote = warningList.length > 0 ? warningList.join("|") : "Perfect";
                                 dataLogs.push({
                                     id: patientID,
@@ -550,9 +596,6 @@
         height: 720
     });
 
-    // ==========================================
-    // アプリ制御
-    // ==========================================
     function startApp() {
         patientID = document.getElementById('patient-id').value || "Guest";
         appMode = document.getElementById('mode-select').value;
@@ -630,6 +673,7 @@
         resultScreen.style.display = 'flex'; 
 
         document.getElementById('res-reps').innerText = counter;
+        document.getElementById('res-max-combo').innerText = maxCombo; // コンボ表示
 
         let fatigueIndex = 0;
         if (dataLogs.length >= 6) { 
@@ -680,13 +724,11 @@
         });
     }
 
-    // ★ DB送信機能 ★
     function sendToGoogleSheets() {
         if(dataLogs.length === 0) {
             alert("送信するデータがありません");
             return;
         }
-
         const btn = document.getElementById('cloud-btn');
         const originalText = btn.innerText;
         btn.innerText = "送信中...";
@@ -695,9 +737,7 @@
         fetch(GAS_URL, {
             method: 'POST',
             body: JSON.stringify(dataLogs),
-            headers: {
-                "Content-Type": "text/plain;charset=utf-8",
-            },
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
         })
         .then(response => {
             alert("クラウドへの保存が完了しました！");
