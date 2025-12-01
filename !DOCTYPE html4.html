@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>スクワット測定 (日本語版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background-color: #222; font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; overflow: hidden; }
+        .container { position: relative; width: 100vw; height: 100vh; }
+        
+        #input_video, #output_canvas { 
+            position: absolute; width: 100%; height: 100%; 
+            object-fit: cover; transform: scaleX(-1);
+        }
+        
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        
+        /* 深さゲージ (左) */
+        #depth-gauge-container {
+            position: absolute; left: 20px; top: 15%; bottom: 20%; width: 50px;
+            background: rgba(50, 50, 50, 0.8); border-radius: 25px;
+            overflow: hidden; border: 3px solid #fff; display: none;
+        }
+        #depth-bar {
+            position: absolute; top: 0; left: 0; width: 100%; height: 0%;
+            background: #00bcd4; transition: height 0.05s linear;
+        }
+        #target-line {
+            position: absolute; left: 0; width: 100%; height: 6px; background: #ff5252; z-index: 5;
+        }
+        .target-label {
+            position: absolute; left: 80px; color: #ff5252; font-weight: bold; font-size: 20px;
+            text-shadow: 2px 2px 0 black;
+        }
+
+        /* ペーサー (右) */
+        #pacer-container {
+            position: absolute; right: 20px; top: 15%; bottom: 20%; width: 10px;
+            background: rgba(255, 255, 255, 0.3); border-radius: 5px; 
+            display: none; 
+        }
+        #pacer-ghost {
+            position: absolute; left: -20px; width: 50px; height: 50px;
+            background: rgba(33, 150, 243, 0.9); border: 4px solid white;
+            border-radius: 50%; top: 100%;
+            box-shadow: 0 0 15px #2196f3;
+        }
+
+        /* 情報パネル (文字サイズ大) */
+        .info-panel {
+            position: absolute; top: 20px; left: 90px;
+            background: rgba(0, 0, 0, 0.7); padding: 15px; border-radius: 12px;
+            color: white; width: 160px; border: 2px solid #555;
+        }
+        .info-label { font-size: 16px; font-weight: bold; color: #bbb; margin-bottom: 5px; }
+        .info-value { font-size: 42px; font-weight: bold; color: #fff; line-height: 1.0; }
+        
+        /* ペーサーカウンター (右下) */
+        .pacer-panel {
+            position: absolute; bottom: 100px; right: 140px; 
+            background: rgba(33, 150, 243, 0.9); padding: 10px; border-radius: 12px;
+            color: white; width: 140px; text-align: center;
+            display: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .pacer-label { font-size: 14px; font-weight: bold; }
+        .pacer-value { font-size: 36px; font-weight: bold; }
+
+        /* 警告表示 */
+        .warning-box {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            width: 95%; text-align: center;
+        }
+        .warning-text {
+            font-size: 42px; font-weight: bold; color: #ff1744; text-shadow: 3px 3px 0 #fff;
+            background-color: rgba(255, 255, 255, 0.9); padding: 20px 40px; border-radius: 20px; 
+            display: inline-block; border: 4px solid #ff1744;
+        }
+
+        /* ステータスランプ */
+        .status-lamp {
+            position: absolute; bottom: 100px; right: 20px;
+            padding: 15px 10px; border-radius: 10px; font-size: 20px; font-weight: bold;
+            color: white; text-align: center; width: 100px;
+        }
+        .lamp-ready { background-color: #00e676; box-shadow: 0 0 20px #00e676; color: black; }
+        .lamp-squat { background-color: #757575; border: 2px solid #aaa; }
+
+        /* タイマー */
+        .timer-box {
+            position: absolute; top: 20px; right: 20px; background: #222; color: #00e676;
+            padding: 10px 20px; border-radius: 10px; font-size: 32px; font-weight: bold;
+            display: none; border: 3px solid #00e676;
+        }
+
+        .control-area {
+            position: absolute; bottom: 30px; left: 0; width: 100%;
+            text-align: center; pointer-events: auto;
+        }
+        .finish-btn {
+            background: #f44336; color: white; border: none; padding: 20px 60px;
+            font-size: 24px; border-radius: 50px; box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+            cursor: pointer; font-weight: bold; letter-spacing: 2px;
+        }
+
+        /* オーバーレイ系 */
+        #countdown-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); z-index: 15; display: none;
+            justify-content: center; align-items: center;
+        }
+        .countdown-text { 
+            font-size: 150px; font-weight: bold; color: white; 
+            text-shadow: 0 0 30px #2196f3; text-align: center;
+        }
+
+        .overlay-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #222; z-index: 20;
+            display: flex; flex-direction: column; align-items: center; color: white;
+            pointer-events: auto; overflow-y: auto; padding-top: 40px;
+        }
+        
+        #result-screen { display: none; padding: 20px; box-sizing: border-box; }
+        .result-header { font-size: 32px; font-weight: bold; margin-bottom: 30px; color: #00e676; border-bottom: 2px solid #555; padding-bottom: 10px;}
+        
+        .stat-card {
+            background: #333; padding: 20px; border-radius: 15px; margin-bottom: 10px;
+            width: 90%; max-width: 400px; text-align: center; border: 1px solid #444;
+        }
+        .stat-val { font-size: 48px; font-weight: bold; }
+        .stat-label { font-size: 16px; color: #ccc; }
+        
+        .chart-container {
+            width: 100%; max-width: 400px; height: 220px; margin-bottom: 20px;
+            background: white; border-radius: 8px; padding: 5px; transform: none !important; 
+        }
+
+        input, select, button.start-btn, button.dl-btn {
+            padding: 15px; font-size: 20px; margin: 10px; border-radius: 8px; border: none; width: 80%; max-width: 300px;
+        }
+        input { text-align: center; }
+        button.start-btn { background: #00e676; color: #003300; font-weight: bold; margin-top: 30px; padding: 20px;}
+        button.dl-btn { background: #2196F3; color: white; margin-top: 10px; }
+        button.close-btn { background: #555; color: white; margin-top: 30px; padding: 15px 40px; border-radius: 8px; font-size: 18px; border: none;}
+        
+        /* デバッグ表示は目立たなく */
+        .angle-monitor { display: none; } 
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <video id="input_video" playsinline></video>
+        <canvas id="output_canvas"></canvas>
+        
+        <div id="countdown-overlay">
+            <div class="countdown-text" id="countdown-val">5</div>
+        </div>
+
+        <div class="ui-layer">
+            <div id="depth-gauge-container">
+                <div id="depth-bar"></div>
+                <div id="target-line"></div>
+            </div>
+            <div id="target-label" class="target-label" style="display:none; top:0;">目標ライン</div>
+
+            <div id="pacer-container">
+                <div id="pacer-ghost"></div>
+            </div>
+
+            <div class="info-panel">
+                <div class="info-label">回数 (回)</div>
+                <div class="info-value" id="reps-display">0</div>
+                <div style="height:10px;"></div>
+                <div class="info-label">1回の秒数</div>
+                <div class="info-value" id="speed-display">0.00</div>
+                <div style="height:10px;"></div>
+                <div class="info-label">検知</div>
+                <div class="info-value" id="side-display" style="font-size:24px;">--</div>
+            </div>
+
+            <div class="pacer-panel" id="pacer-panel">
+                <div class="pacer-label">ペース回数</div>
+                <div class="pacer-value" id="pacer-reps-display">0</div>
+            </div>
+
+            <div class="timer-box" id="timer-display">残り 30秒</div>
+            
+            <div class="warning-box">
+                <div class="warning-text" id="warning-display" style="display:none;"></div>
+            </div>
+
+            <div class="status-lamp lamp-squat" id="status-lamp">しゃがむ</div>
+
+            <div class="control-area">
+                <button class="finish-btn" onclick="showResults()">終了・解析</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="start-screen" class="overlay-screen" style="justify-content: center;">
+        <h2 style="color:#00e676; font-size:32px;">スクワット測定</h2>
+        <p style="margin-bottom:5px;">患者IDを入力してください</p>
+        <input type="text" id="patient-id" placeholder="ID (例: 001)" value="TestUser">
+        
+        <label style="margin-top:30px; font-size:18px;">モードを選んでください:</label>
+        <select id="mode-select" style="margin-top:10px; padding:15px;">
+            <option value="training_slow">1. スロトレ (7秒ペース)</option>
+            <option value="training_self">2. セルフペース (自分の速度)</option>
+            <option value="cs30">3. CS-30 テスト (30秒間)</option>
+        </select>
+        
+        <button class="start-btn" onclick="startApp()">測定スタート</button>
+        <p style="font-size:14px; color:#aaa; margin-top:20px;">※スマホの音量をONにしてください</p>
+    </div>
+
+    <div id="result-screen" class="overlay-screen">
+        <div class="result-header">測定結果レポート</div>
+        
+        <div style="display:flex; justify-content:space-between; width:95%; max-width:400px;">
+            <div class="stat-card" style="width:48%;">
+                <div class="stat-label">合計回数</div>
+                <div class="stat-val" id="res-reps">0</div>
+            </div>
+            <div class="stat-card" style="width:48%;">
+                <div class="stat-label">疲労指数</div>
+                <div class="stat-val" id="res-fatigue">--</div>
+            </div>
+        </div>
+
+        <div style="color:white; margin-bottom:5px; font-weight:bold;">▼ 1回ごとの秒数 (疲れ具合)</div>
+        <div class="chart-container"><canvas id="speedChart"></canvas></div>
+
+        <div style="color:white; margin-bottom:5px; font-weight:bold;">▼ 深さとエラー (赤色は失敗)</div>
+        <div class="chart-container"><canvas id="depthChart"></canvas></div>
+        
+        <button class="dl-btn" onclick="downloadCSV()">結果を保存する (CSV)</button>
+        <button class="close-btn" onclick="location.reload()">タイトルに戻る</button>
+    </div>
+
+<script>
+    // 設定
+    const KNEE_IN_THRESHOLD = 0.04; 
+    const BAD_POSTURE_ANGLE = 75;
+    const RESET_ANGLE = 160;   
+    const DEPTH_THRESHOLD = 130; 
+    const SPEECH_COOLDOWN = 3000; 
+    const SLOW_CYCLE_MS = 7000; 
+
+    // 変数
+    let counter = 0;
+    let currentRepMinAngle = 180;
+    let repStartTime = 0;
+    let isMovementStarted = false;
+    let hasDeepSquatted = false;
+    let hasSpokenGood = false;
+    let lastSpeechTime = 0;
+
+    let appMode = "training_self"; 
+    let testStartTime = null; 
+    let isFinished = false;
+    let patientID = "";
+    let isCameraReady = false;
+    let dataLogs = []; 
+
+    // DOM
+    const videoElement = document.getElementById('input_video');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    
+    const repsDisplay = document.getElementById('reps-display');
+    const speedDisplay = document.getElementById('speed-display');
+    const sideDisplay = document.getElementById('side-display');
+    const warningDisplay = document.getElementById('warning-display');
+    const statusLamp = document.getElementById('status-lamp');
+    const timerDisplay = document.getElementById('timer-display');
+    
+    const depthGaugeContainer = document.getElementById('depth-gauge-container');
+    const depthBar = document.getElementById('depth-bar');
+    const targetLine = document.getElementById('target-line');
+    const targetLabel = document.getElementById('target-label');
+    const pacerContainer = document.getElementById('pacer-container');
+    const pacerGhost = document.getElementById('pacer-ghost');
+    const pacerPanel = document.getElementById('pacer-panel');
+    const pacerRepsDisplay = document.getElementById('pacer-reps-display');
+
+    const countdownOverlay = document.getElementById('countdown-overlay');
+    const countdownVal = document.getElementById('countdown-val');
+    const startScreen = document.getElementById('start-screen');
+    const resultScreen = document.getElementById('result-screen');
+
+    function calculateAngle(a, b, c, width, height) {
+        const ax = a.x * width, ay = a.y * height;
+        const bx = b.x * width, by = b.y * height;
+        const cx = c.x * width, cy = c.y * height;
+        const radians = Math.atan2(cy - by, cx - bx) - Math.atan2(ay - by, ax - bx);
+        let angle = Math.abs(radians * 180.0 / Math.PI);
+        if (angle > 180.0) angle = 360 - angle;
+        return angle;
+    }
+
+    // 音声読み上げ (日本語)
+    function speak(text, force = false) {
+        const now = Date.now();
+        if (force || (now - lastSpeechTime > SPEECH_COOLDOWN)) {
+            const uttr = new SpeechSynthesisUtterance(text);
+            uttr.lang = 'ja-JP'; // 日本語
+            uttr.rate = 1.2;
+            window.speechSynthesis.speak(uttr);
+            lastSpeechTime = now;
+        }
+    }
+    function getNowStr() { return new Date().toLocaleString(); }
+
+    function updateUIOverlays(angle) {
+        const minAng = 180;
+        const maxAng = 70;
+        let percentage = (minAng - angle) / (minAng - maxAng) * 100;
+        if(percentage < 0) percentage = 0; if(percentage > 100) percentage = 100;
+
+        depthBar.style.height = percentage + "%";
+        
+        if (angle < DEPTH_THRESHOLD) {
+            depthBar.style.backgroundColor = "#00e676"; // 鮮やかな緑
+        } else {
+            depthBar.style.backgroundColor = "#00bcd4"; 
+        }
+
+        let targetPerc = (minAng - DEPTH_THRESHOLD) / (minAng - maxAng) * 100;
+        targetLine.style.top = targetPerc + "%"; 
+        targetLabel.style.top = `calc(${targetPerc}% - 12px)`; 
+
+        if (appMode === "cs30") return;
+
+        if (appMode === "training_self") {
+            pacerGhost.style.top = percentage + "%"; 
+        } 
+    }
+
+    function animatePacer() {
+        if (!isFinished) {
+            if (appMode === "training_slow" && testStartTime && isCameraReady) {
+                const elapsed = Date.now() - testStartTime;
+                const t = elapsed % SLOW_CYCLE_MS;
+                
+                let posPerc = 0;
+                if (t < 3000) { 
+                    posPerc = 100 - (t / 3000 * 100); 
+                } else if (t < 6000) { 
+                    posPerc = (t - 3000) / 3000 * 100; 
+                } else { 
+                    posPerc = 100; 
+                }
+                pacerGhost.style.top = posPerc + "%";
+
+                const pacerReps = Math.floor(elapsed / SLOW_CYCLE_MS);
+                pacerRepsDisplay.innerText = pacerReps;
+            }
+            requestAnimationFrame(animatePacer);
+        }
+    }
+
+    function onResults(results) {
+        if(isFinished) return;
+
+        if (!isCameraReady) {
+            isCameraReady = true;
+            depthGaugeContainer.style.display = "block";
+            targetLabel.style.display = "block";
+            
+            if (appMode === "cs30" || appMode === "training_slow") {
+                runCountdown();
+            } else {
+                testStartTime = Date.now();
+                speak("測定を開始します");
+            }
+        }
+
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        const w = canvasElement.width;
+        const h = canvasElement.height;
+        
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, w, h);
+
+        if (results.poseLandmarks) {
+            const lms = results.poseLandmarks;
+            drawConnectors(canvasCtx, lms, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+            drawLandmarks(canvasCtx, lms, {color: '#FF0000', lineWidth: 2});
+
+            let side = "RIGHT";
+            let sideText = "右足";
+            if (lms[11].visibility > lms[12].visibility && lms[23].visibility > lms[24].visibility) {
+                side = "LEFT";
+                sideText = "左足";
+            }
+            sideDisplay.innerText = sideText;
+
+            let shoulder, hip, knee, ankle;
+            if (side === "RIGHT") {
+                shoulder = lms[12]; hip = lms[24]; knee = lms[26]; ankle = lms[28];
+            } else {
+                shoulder = lms[11]; hip = lms[23]; knee = lms[25]; ankle = lms[27];
+            }
+
+            if(shoulder.visibility > 0.5 && hip.visibility > 0.5 && knee.visibility > 0.5 && ankle.visibility > 0.5) {
+                const kneeAngle = calculateAngle(hip, knee, ankle, w, h);
+                const hipAngle = calculateAngle(shoulder, hip, knee, w, h);
+
+                updateUIOverlays(kneeAngle);
+                
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(shoulder.x * w, shoulder.y * h);
+                canvasCtx.lineTo(hip.x * w, hip.y * h);
+                canvasCtx.lineTo(knee.x * w, knee.y * h);
+                canvasCtx.strokeStyle = "yellow";
+                canvasCtx.lineWidth = 5;
+                canvasCtx.stroke();
+
+                let warningList = [];
+                let isKneeIn = false;
+                if (side === "RIGHT") {
+                    if (knee.x > ankle.x + KNEE_IN_THRESHOLD) isKneeIn = true;
+                } else {
+                    if (knee.x < ankle.x - KNEE_IN_THRESHOLD) isKneeIn = true;
+                }
+                if (isKneeIn && kneeAngle < 160) {
+                     if (isMovementStarted) {
+                        warningList.push("ひざを開いて！");
+                        speak("ひざを開いて");
+                     }
+                }
+                if (hipAngle < BAD_POSTURE_ANGLE && kneeAngle < 160) {
+                    if (isMovementStarted) {
+                        warningList.push("胸を張って！");
+                        speak("むねをはって");
+                     }
+                }
+                if (warningList.length > 0) {
+                    warningDisplay.innerText = warningList.join("\n");
+                    warningDisplay.style.display = "block";
+                } else {
+                    warningDisplay.style.display = "none";
+                }
+
+                // カウントロジック
+                if ((appMode === "cs30" || appMode === "training_slow") && !testStartTime) {
+                    // 待機
+                } else {
+                    if (kneeAngle < 165 && !isMovementStarted) {
+                        isMovementStarted = true;
+                        repStartTime = Date.now();
+                        currentRepMinAngle = 180;
+                        hasDeepSquatted = false;
+                        hasSpokenGood = false;
+                    }
+
+                    if (isMovementStarted) {
+                        if (kneeAngle < currentRepMinAngle) currentRepMinAngle = kneeAngle;
+                        if (kneeAngle < DEPTH_THRESHOLD) {
+                            hasDeepSquatted = true;
+                            if (!hasSpokenGood && warningList.length === 0) {
+                                speak("いい感じです", true);
+                                hasSpokenGood = true;
+                            }
+                        }
+                        if (kneeAngle > RESET_ANGLE) {
+                            if (hasDeepSquatted) {
+                                counter++;
+                                const duration = (Date.now() - repStartTime) / 1000;
+                                repsDisplay.innerText = counter;
+                                speedDisplay.innerText = duration.toFixed(2);
+                                const errorNote = warningList.length > 0 ? warningList.join("|") : "Perfect";
+                                dataLogs.push({
+                                    id: patientID,
+                                    time: getNowStr(),
+                                    rep: counter,
+                                    depth: Math.floor(currentRepMinAngle),
+                                    duration: parseFloat(duration.toFixed(2)),
+                                    note: errorNote
+                                });
+                            }
+                            isMovementStarted = false;
+                            hasDeepSquatted = false;
+                        }
+                    }
+                }
+
+                if (hasDeepSquatted) {
+                    statusLamp.className = "status-lamp lamp-ready";
+                    statusLamp.innerText = "OK!";
+                } else {
+                    statusLamp.className = "status-lamp lamp-squat";
+                    statusLamp.innerText = "しゃがむ";
+                }
+            } 
+        }
+
+        if (appMode === "cs30" && !isFinished && testStartTime) {
+            const elapsed = (Date.now() - testStartTime) / 1000;
+            let remaining = 30 - elapsed;
+            if (remaining <= 0) {
+                remaining = 0;
+                showResults(); 
+            }
+            timerDisplay.innerText = "残り " + Math.ceil(remaining) + "秒";
+        }
+
+        canvasCtx.restore();
+    }
+
+    const pose = new Pose({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+    }});
+    
+    pose.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+    pose.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            if(!isFinished) await pose.send({image: videoElement});
+        },
+        width: 1280,
+        height: 720
+    });
+
+    function startApp() {
+        patientID = document.getElementById('patient-id').value || "Guest";
+        appMode = document.getElementById('mode-select').value;
+        startScreen.style.display = 'none';
+
+        if (appMode === 'cs30') {
+            timerDisplay.style.display = "block";
+            pacerContainer.style.display = "none";
+            pacerPanel.style.display = "none";
+        } else if (appMode === 'training_slow') {
+            timerDisplay.style.display = "none";
+            pacerContainer.style.display = "block";
+            pacerPanel.style.display = "block";
+            pacerGhost.style.top = "100%"; 
+        } else {
+            timerDisplay.style.display = "none";
+            pacerContainer.style.display = "block";
+            pacerPanel.style.display = "none";
+        }
+        
+        const uttr = new SpeechSynthesisUtterance("カメラを起動します");
+        uttr.lang = 'ja-JP';
+        window.speechSynthesis.speak(uttr);
+
+        camera.start();
+        animatePacer();
+    }
+
+    function runCountdown() {
+        let count = 5;
+        countdownOverlay.style.display = 'flex';
+        
+        if (appMode === "training_slow") {
+            countdownVal.innerText = "しゃがんで！";
+            countdownVal.style.fontSize = "60px";
+            speak("しゃがんで準備してください", true);
+            pacerGhost.style.top = "100%";
+        } else {
+            countdownVal.innerText = count;
+            countdownVal.style.fontSize = "150px";
+            speak(String(count), true);
+        }
+
+        setTimeout(() => {
+             if (appMode === "training_slow") {
+                 count = 5; 
+                 countdownVal.style.fontSize = "150px";
+             }
+             
+             const timer = setInterval(() => {
+                countdownVal.innerText = count;
+                speak(String(count), true);
+                
+                count--;
+                if (count < 0) {
+                    clearInterval(timer);
+                    countdownVal.innerText = "スタート！";
+                    speak("スタート", true);
+                    
+                    setTimeout(() => {
+                        countdownOverlay.style.display = 'none';
+                        testStartTime = Date.now(); 
+                    }, 1000);
+                }
+            }, 1000);
+        }, 2000); 
+    }
+
+    function showResults() {
+        if(isFinished) return;
+        isFinished = true;
+        speak("終了です。お疲れ様でした。");
+
+        document.querySelector('.container').style.display = 'none'; 
+        resultScreen.style.display = 'flex'; 
+
+        document.getElementById('res-reps').innerText = counter;
+
+        let fatigueIndex = 0;
+        if (dataLogs.length >= 6) { 
+            const first3 = dataLogs.slice(0, 3);
+            const last3 = dataLogs.slice(-3);
+            const avgFirst = first3.reduce((sum, d) => sum + d.duration, 0) / 3;
+            const avgLast = last3.reduce((sum, d) => sum + d.duration, 0) / 3;
+            fatigueIndex = (avgLast / avgFirst).toFixed(2);
+        } else {
+            fatigueIndex = "-";
+        }
+        document.getElementById('res-fatigue').innerText = fatigueIndex;
+
+        const labels = dataLogs.map(d => d.rep);
+        const speeds = dataLogs.map(d => d.duration);
+        const depths = dataLogs.map(d => d.depth);
+        // エラーなら赤、OKなら青
+        const depthColors = dataLogs.map(d => (d.note === "Perfect") ? '#2196f3' : '#f44336');
+
+        new Chart(document.getElementById('speedChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '動作時間 (秒)',
+                    data: speeds,
+                    borderColor: '#00e676',
+                    backgroundColor: 'rgba(0, 230, 118, 0.2)',
+                    tension: 0.3
+                }]
+            },
+            options: { scales: { y: { beginAtZero: true } } }
+        });
+
+        new Chart(document.getElementById('depthChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'しゃがみ深さ (角度)',
+                    data: depths,
+                    backgroundColor: depthColors
+                }]
+            },
+            options: { 
+                scales: { y: { reverse: true, min: 60, max: 180 } }, 
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function downloadCSV() {
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "PatientID,Timestamp,Rep_Count,Depth,Duration,Form_Note\n";
+        dataLogs.forEach(row => {
+            csvContent += `${row.id},${row.time},${row.rep},${row.depth},${row.duration},${row.note}\n`;
+        });
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        const fileName = `squat_log_${patientID}_${Date.now()}.csv`;
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+</body>
+</html>
