@@ -561,6 +561,7 @@
         new Chart(getEl('speedChart'), {type:'line', data:{labels:lbls, datasets:[{label:'秒数', data:spds, borderColor:'#00e676', tension:0.3}] }});
         new Chart(getEl('depthChart'), {type:'bar', data:{labels:lbls, datasets:[{label:'深さ', data:dpts, backgroundColor:clrs}]}, options:{scales:{y:{reverse:true, min:60, max:180}}, plugins:{legend:{display:false}}}});
     }
+
     function sendToGoogleSheets() {
         if(dataLogs.length === 0) {
             alert("送信するデータがありません");
