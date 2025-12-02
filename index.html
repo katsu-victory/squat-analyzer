@@ -292,7 +292,7 @@
 
 <script>
     // 1. 定数
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbxxkwLbqyF5B1Z8DR91f9_eqd96qi9lAaqUx-Ou-VFgGhy5FLIo72Yr_1tzU_acxavo/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycby1toVXJVJ1HyMxWxue5U3IN2NjFud8JAMm_ze2J3eFtL0jkgXoCf1HRm3g_wA7PDPa/exec";
     const KNEE_IN_THRESHOLD = 0.04; 
     const BAD_POSTURE_ANGLE = 75;
     const RESET_ANGLE = 160;   
@@ -561,13 +561,51 @@
         new Chart(getEl('speedChart'), {type:'line', data:{labels:lbls, datasets:[{label:'秒数', data:spds, borderColor:'#00e676', tension:0.3}] }});
         new Chart(getEl('depthChart'), {type:'bar', data:{labels:lbls, datasets:[{label:'深さ', data:dpts, backgroundColor:clrs}]}, options:{scales:{y:{reverse:true, min:60, max:180}}, plugins:{legend:{display:false}}}});
     }
-
     function sendToGoogleSheets() {
-        if(metrics.logs.length===0){alert("データなし");return;}
-        const btn=getEl('cloud-btn'); btn.innerText="送信中..."; btn.disabled=true;
-        fetch(GAS_URL, {method:'POST', body:JSON.stringify(metrics.logs), headers:{"Content-Type":"text/plain"}})
-        .then(()=>{alert("完了"); btn.innerText="送信完了";})
-        .catch(e=>{alert("エラー"); btn.disabled=false;});
+        if(dataLogs.length === 0) {
+            alert("送信するデータがありません");
+            return;
+        }
+        const btn = document.getElementById('cloud-btn');
+        const originalText = btn.innerText;
+        btn.innerText = "送信中...";
+        btn.disabled = true;
+
+        // セッションIDの発行（現在時刻のミリ秒などを使ってユニークにする）
+        const sessionID = patientID + "_" + Date.now();
+        
+        // 疲労指数の取得
+        const fatigueText = document.getElementById('res-fatigue').innerText;
+
+        // 送信データのパッケージング
+        const payload = {
+            sessionID: sessionID,
+            summary: {
+                patientID: patientID,
+                date: getNowStr(),
+                mode: appState.mode + "_" + appState.subMode, // トレーニングモード等
+                reps: metrics.count,
+                score: metrics.score,
+                maxCombo: metrics.maxCombo,
+                fatigue: fatigueText
+            },
+            logs: dataLogs // 詳細データの配列
+        };
+
+        fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+        })
+        .then(response => {
+            alert("クラウドへの保存が完了しました！\n(SummaryとDetailsに分かれて保存されました)");
+            btn.innerText = "送信完了";
+        })
+        .catch(error => {
+            alert("送信エラー: " + error);
+            btn.innerText = originalText;
+            btn.disabled = false;
+        });
     }
     function downloadCSV() {
         let c = "ID,Time,Rep,Depth,Duration,Note\n";
@@ -707,4 +745,3 @@
 </script>
 </body>
 </html>
-
