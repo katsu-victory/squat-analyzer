@@ -3,13 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Squat Analyzer (Game Mode)</title>
-    
+    <title>Squat Master Ultimate (Final Fixed)</title>
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <meta name="apple-mobile-web-app-title" content="スクワット測定">
-
+    
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -18,160 +15,168 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
     <style>
-        body { margin: 0; padding: 0; background-color: #000; font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; overflow: hidden; }
+        body { margin: 0; padding: 0; background-color: #121212; font-family: "Hiragino Kaku Gothic ProN", sans-serif; overflow: hidden; }
         .container { position: relative; width: 100vw; height: 100vh; }
         
-        #input_video, #output_canvas { 
+        #input_video { 
             position: absolute; width: 100%; height: 100%; 
-            object-fit: cover; transform: scaleX(-1);
+            object-fit: cover; transform: scaleX(-1); z-index: 0;
+        }
+        #output_canvas { 
+            position: absolute; width: 100%; height: 100%; 
+            object-fit: cover; transform: scaleX(-1); z-index: 1;
         }
         
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
-        
-        /* 深さゲージ */
-        #depth-gauge-container {
-            position: absolute; left: 20px; top: 15%; bottom: 20%; width: 50px;
-            background: rgba(50, 50, 50, 0.8); border-radius: 25px;
-            overflow: hidden; border: 3px solid #fff; display: none;
-        }
-        #depth-bar {
-            position: absolute; top: 0; left: 0; width: 100%; height: 0%;
-            background: #00bcd4; transition: height 0.05s linear;
-        }
-        #target-line {
-            position: absolute; left: 0; width: 100%; height: 6px; background: #ff5252; z-index: 5;
-        }
-        .target-label {
-            position: absolute; left: 80px; color: #ff5252; font-weight: bold; font-size: 20px;
-            text-shadow: 2px 2px 0 black;
-        }
 
-        /* ペーサー */
+        /* === 共通UI === */
+        #depth-gauge-container {
+            position: absolute; left: 15px; top: 20%; bottom: 20%; width: 40px;
+            background: rgba(0, 0, 0, 0.5); border-radius: 20px; border: 2px solid #fff; 
+            display: none;
+        }
+        #depth-bar { position: absolute; top: 0; left: 0; width: 100%; height: 0%; background: #00bcd4; transition: height 0.05s linear; }
+        #target-line { position: absolute; left: 0; width: 100%; height: 4px; background: #ff4081; z-index: 5; }
+        #target-label { position: absolute; left: 60px; color: #ff4081; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 0 black; display: none; }
+        
         #pacer-container {
-            position: absolute; right: 20px; top: 15%; bottom: 20%; width: 10px;
-            background: rgba(255, 255, 255, 0.3); border-radius: 5px; 
-            display: none; 
+            position: absolute; right: 15px; top: 20%; bottom: 20%; width: 10px;
+            background: rgba(255, 255, 255, 0.2); border-radius: 5px; 
+            display: none;
         }
         #pacer-ghost {
-            position: absolute; left: -20px; width: 50px; height: 50px;
-            background: rgba(33, 150, 243, 0.9); border: 4px solid white;
-            border-radius: 50%; top: 100%;
-            box-shadow: 0 0 15px #2196f3;
+            position: absolute; left: -15px; width: 40px; height: 40px;
+            background: #2979ff; border: 3px solid white; border-radius: 50%; top: 100%;
+            box-shadow: 0 0 15px #2979ff;
         }
 
-        /* 情報パネル */
+        /* === モード別UI === */
+        #training-ui { display: none; }
+        #game-ui { display: none; }
+
         .info-panel {
-            position: absolute; top: 20px; left: 90px;
+            position: absolute; top: 20px; left: 70px;
             background: rgba(0, 0, 0, 0.7); padding: 15px; border-radius: 12px;
-            color: white; width: 160px; border: 2px solid #555;
+            color: white; width: 140px; border: 1px solid #555;
         }
-        .info-label { font-size: 16px; font-weight: bold; color: #bbb; margin-bottom: 5px; }
-        .info-value { font-size: 42px; font-weight: bold; color: #fff; line-height: 1.0; }
+        .info-label { font-size: 12px; color: #ccc; }
+        .info-val { font-size: 36px; font-weight: bold; line-height:1.0; }
         
-        /* ペーサーカウンター */
-        .pacer-panel {
-            position: absolute; bottom: 100px; right: 140px; 
-            background: rgba(33, 150, 243, 0.9); padding: 10px; border-radius: 12px;
-            color: white; width: 140px; text-align: center;
-            display: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        .timer-box {
+            position: absolute; top: 20px; right: 20px; background: #000; color: #00e676;
+            padding: 5px 20px; border-radius: 8px; font-size: 32px; font-weight: bold; border: 2px solid #00e676;
+            display: none;
         }
-        .pacer-label { font-size: 14px; font-weight: bold; }
-        .pacer-value { font-size: 36px; font-weight: bold; }
-
-        /* 警告表示 */
-        .warning-box {
-            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
-            width: 95%; text-align: center;
-        }
-        .warning-text {
-            font-size: 42px; font-weight: bold; color: #ff1744; text-shadow: 3px 3px 0 #fff;
-            background-color: rgba(255, 255, 255, 0.9); padding: 20px 40px; border-radius: 20px; 
-            display: inline-block; border: 4px solid #ff1744;
+        
+        .pacer-counter {
+            position: absolute; bottom: 120px; right: 60px;
+            background: rgba(41, 121, 255, 0.8); padding: 10px; border-radius: 8px;
+            color: white; text-align: center; display: none; width: 100px;
         }
 
-        /* ★コンボ表示 (NEW)★ */
+        /* ゲーム用 */
+        .score-board {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            text-align: center; width: 250px;
+        }
+        .score-val { 
+            font-size: 56px; font-weight: 900; color: #fff; 
+            text-shadow: 0 0 10px #ffd700, 2px 2px 0 #000; font-style: italic; line-height: 1.0;
+        }
+        #battle-stage {
+            position: absolute; top: 15%; left: 50%; transform: translateX(-50%);
+            width: 300px; text-align: center;
+        }
+        #monster-name {
+            background: rgba(0,0,0,0.6); padding: 4px 15px; border-radius: 15px; 
+            color: #00e676; font-weight: bold; font-size: 16px; display: inline-block; margin-bottom: 5px;
+            border: 1px solid #00e676;
+        }
+        #monster { font-size: 100px; filter: drop-shadow(0 0 10px red); transition: transform 0.1s; display:inline-block; }
+        .damage-shake { animation: shake 0.3s; }
+        @keyframes shake { 0% {transform: rotate(0deg);} 25% {transform: rotate(10deg);} 75% {transform: rotate(-10deg);} 100% {transform: rotate(0deg);} }
+        
+        .hp-container {
+            width: 100%; height: 24px; background: #333; border: 2px solid white; border-radius: 12px;
+            margin-top: 5px; overflow: hidden; position: relative;
+        }
+        #hp-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #ff1744, #ff4081); transition: width 0.3s; }
+        #hp-text {
+            position: absolute; top: 0; left: 0; width: 100%; text-align: center;
+            font-size: 16px; font-weight: bold; color: white; line-height: 24px; text-shadow: 1px 1px 0 #000;
+        }
+        
         #combo-display {
-            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%) rotate(-5deg);
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-5deg);
             font-size: 80px; font-weight: 900; color: #ffeb3b; 
             text-shadow: 4px 4px 0 #f57f17, -2px -2px 0 white;
             font-style: italic; pointer-events: none; opacity: 0;
-            transition: transform 0.2s, opacity 0.5s;
-            z-index: 20;
+            transition: transform 0.1s, opacity 0.3s; z-index: 20;
         }
-        .combo-active { opacity: 1 !important; transform: translate(-50%, -50%) rotate(-5deg) scale(1.2) !important; }
+        .combo-active { opacity: 1 !important; transform: translate(-50%, -50%) rotate(-5deg) scale(1.3) !important; }
 
-        /* ステータスランプ */
+        /* 警告 & ステータス */
+        .warning-text {
+            position: absolute; top: 60%; left: 50%; transform: translateX(-50%);
+            font-size: 28px; font-weight: bold; color: #ff1744; 
+            background: rgba(255, 255, 255, 0.9); padding: 10px 20px; border-radius: 10px; border: 3px solid red; display: none;
+        }
         .status-lamp {
             position: absolute; bottom: 100px; right: 20px;
-            padding: 15px 10px; border-radius: 10px; font-size: 20px; font-weight: bold;
-            color: white; text-align: center; width: 100px;
+            padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold;
+            color: white; text-align: center; width: 80px;
         }
-        .lamp-ready { background-color: #00e676; box-shadow: 0 0 20px #00e676; color: black; }
-        .lamp-squat { background-color: #757575; border: 2px solid #aaa; }
+        .lamp-ready { background-color: #00e676; box-shadow: 0 0 15px #00e676; }
+        .lamp-squat { background-color: #555; }
 
-        /* タイマー */
-        .timer-box {
-            position: absolute; top: 20px; right: 20px; background: #222; color: #00e676;
-            padding: 10px 20px; border-radius: 10px; font-size: 32px; font-weight: bold;
-            display: none; border: 3px solid #00e676;
-        }
-
-        .control-area {
-            position: absolute; bottom: 30px; left: 0; width: 100%;
-            text-align: center; pointer-events: auto;
-        }
         .finish-btn {
-            background: #f44336; color: white; border: none; padding: 20px 60px;
-            font-size: 24px; border-radius: 50px; box-shadow: 0 6px 20px rgba(0,0,0,0.6);
-            cursor: pointer; font-weight: bold; letter-spacing: 2px;
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(45deg, #f44336, #ff9800); color: white; border: none;
+            padding: 15px 50px; font-size: 20px; border-radius: 30px; font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); cursor: pointer; pointer-events: auto;
         }
 
-        /* オーバーレイ系 */
+        /* オーバーレイ */
         #countdown-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.6); z-index: 15; display: none;
+            background: rgba(0,0,0,0.7); z-index: 15; display: none;
             justify-content: center; align-items: center;
         }
-        .countdown-text { 
-            font-size: 150px; font-weight: bold; color: white; 
-            text-shadow: 0 0 30px #2196f3; text-align: center;
-        }
+        .countdown-text { font-size: 120px; font-weight: bold; color: white; text-shadow: 0 0 30px cyan; text-align: center;}
 
         .overlay-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: #222; z-index: 20;
-            display: flex; flex-direction: column; align-items: center; color: white;
+            background: #222; z-index: 20; display: flex; flex-direction: column; align-items: center; color: white;
             pointer-events: auto; overflow-y: auto; padding-top: 40px;
         }
         
-        #result-screen { display: none; padding: 20px; box-sizing: border-box; }
-        .result-header { font-size: 32px; font-weight: bold; margin-bottom: 30px; color: #00e676; border-bottom: 2px solid #555; padding-bottom: 10px;}
+        #start-screen { justify-content: center; }
         
-        .stat-card {
-            background: #333; padding: 20px; border-radius: 15px; margin-bottom: 10px;
-            width: 90%; max-width: 400px; text-align: center; border: 1px solid #444;
+        .big-btn {
+            width: 80%; max-width: 350px; padding: 25px; margin: 15px; border-radius: 15px; border: none;
+            font-size: 24px; font-weight: bold; color: white; cursor: pointer; text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); transition: transform 0.1s;
         }
-        .stat-val { font-size: 48px; font-weight: bold; }
-        .stat-label { font-size: 16px; color: #ccc; }
+        .big-btn:active { transform: scale(0.95); }
+        .btn-train { background: linear-gradient(135deg, #00c853, #64dd17); }
+        .btn-game { background: linear-gradient(135deg, #2979ff, #00e5ff); }
         
-        .chart-container {
-            width: 100%; max-width: 400px; height: 220px; margin-bottom: 20px;
-            background: white; border-radius: 8px; padding: 5px; transform: none !important; 
+        .sub-btn {
+            width: 70%; padding: 15px; margin: 10px; border-radius: 10px; border: 2px solid #555;
+            font-size: 18px; color: white; background: #333; cursor: pointer;
         }
+        .sub-btn.selected { border-color: #00e676; background: #003300; }
 
-        input, select, button {
-            padding: 15px; font-size: 20px; margin: 10px; border-radius: 8px; border: none; width: 80%; max-width: 300px;
-        }
-        input { text-align: center; }
+        .input-area { padding: 10px; font-size: 18px; text-align: center; border-radius: 5px; width: 60%; margin-bottom: 20px;}
+
+        /* リザルト */
+        #result-screen { display: none; }
+        .stat-card { background: #333; padding: 15px; border-radius: 10px; width: 45%; text-align: center; margin-bottom: 10px;}
+        .stat-val { font-size: 32px; font-weight: bold; }
+        .chart-box { width: 100%; max-width: 400px; height: 180px; background: white; border-radius: 8px; margin-bottom: 10px; }
         
-        button.start-btn { background: #00e676; color: #003300; font-weight: bold; margin-top: 30px; padding: 20px;}
-        button.cloud-btn { 
-            background: #2979ff; color: white; margin-top: 10px; padding: 15px; font-weight: bold;
-            box-shadow: 0 4px 15px rgba(41, 121, 255, 0.4);
-        }
-        button.dl-btn { 
-            background: #555; color: white; margin-top: 10px; font-size: 14px; padding: 10px;
-        }
+        button.cloud-btn { background: #2962ff; color: white; width: 90%; padding: 15px; border-radius:30px; border:none; font-weight:bold; margin-top:10px;}
+        button.dl-btn { background: #555; color: white; margin-top: 10px; font-size: 14px; padding: 10px; border-radius: 5px; border:none;}
         button.close-btn { background: #333; color: #aaa; margin-top: 30px; padding: 15px; font-size: 16px; border: 1px solid #555;}
         
         .angle-monitor { display: none; } 
@@ -183,158 +188,184 @@
         <video id="input_video" playsinline></video>
         <canvas id="output_canvas"></canvas>
         
-        <div id="countdown-overlay">
-            <div class="countdown-text" id="countdown-val">5</div>
-        </div>
+        <div id="countdown-overlay"><div class="countdown-text" id="countdown-val">5</div></div>
 
         <div class="ui-layer">
-            <div id="depth-gauge-container">
-                <div id="depth-bar"></div>
-                <div id="target-line"></div>
-            </div>
-            <div id="target-label" class="target-label" style="display:none; top:0;">目標ライン</div>
+            <div id="depth-gauge-container"><div id="depth-bar"></div><div id="target-line"></div></div>
+            <div id="target-label">LINE</div>
+            <div id="pacer-container"><div id="pacer-ghost"></div></div>
 
-            <div id="pacer-container">
-                <div id="pacer-ghost"></div>
-            </div>
-
-            <div class="info-panel">
-                <div class="info-label">回数 (回)</div>
-                <div class="info-value" id="reps-display">0</div>
-                <div style="height:10px;"></div>
-                <div class="info-label">1回の秒数</div>
-                <div class="info-value" id="speed-display">0.00</div>
-                <div style="height:10px;"></div>
-                <div class="info-label">検知</div>
-                <div class="info-value" id="side-display" style="font-size:24px;">--</div>
+            <div id="training-ui">
+                <div class="info-panel">
+                    <div class="info-label">回数</div><div class="info-val" id="tr-reps">0</div>
+                    <div style="height:10px;"></div>
+                    <div class="info-label">秒数</div><div class="info-val" id="tr-speed">0.0</div>
+                </div>
+                <div class="timer-box" id="tr-timer">30</div>
+                <div class="pacer-counter" id="tr-pacer-box">
+                    <div style="font-size:10px;">ペース</div><div style="font-size:24px; font-weight:bold;" id="tr-pacer-val">0</div>
+                </div>
             </div>
 
-            <div class="pacer-panel" id="pacer-panel">
-                <div class="pacer-label">ペース回数</div>
-                <div class="pacer-value" id="pacer-reps-display">0</div>
+            <div id="game-ui">
+                <div class="info-panel">
+                    <div class="info-label">LEVEL</div><div class="info-val" id="gm-lvl-val">1</div>
+                    <div style="height:10px;"></div>
+                    <div class="info-label">COMBO</div><div class="info-val" id="gm-combo-val">0</div>
+                </div>
+
+                <div class="score-board">
+                    <div style="font-size:12px; color:#ffd700; font-weight:bold;">SCORE</div>
+                    <div class="score-val" id="gm-score">0</div>
+                </div>
+                <div id="battle-stage">
+                    <div id="monster-name">Lv.1 スライム</div>
+                    <div id="monster">👾</div>
+                    <div class="hp-container">
+                        <div id="hp-bar"></div>
+                        <div id="hp-text">100/100</div>
+                    </div>
+                </div>
+                <div id="combo-display"></div>
             </div>
 
-            <div class="timer-box" id="timer-display">残り 30秒</div>
-            
-            <div class="warning-box">
-                <div class="warning-text" id="warning-display" style="display:none;"></div>
-            </div>
-
-            <div id="combo-display"></div>
-
-            <div class="status-lamp lamp-squat" id="status-lamp">しゃがむ</div>
-
-            <div class="control-area">
-                <button class="finish-btn" onclick="showResults()">終了・解析</button>
-            </div>
+            <div class="warning-text" id="warning-msg"></div>
+            <div class="status-lamp lamp-squat" id="status-lamp">DOWN</div>
+            <button class="finish-btn" onclick="finishSession()">終了・解析</button>
         </div>
     </div>
 
-    <div id="start-screen" class="overlay-screen" style="justify-content: center;">
-        <h2 style="color:#00e676; font-size:32px;">スクワット測定</h2>
-        <p style="margin-bottom:5px;">患者IDを入力してください</p>
-        <input type="text" id="patient-id" placeholder="ID (例: 001)" value="TestUser">
+    <div id="start-screen" class="overlay-screen">
+        <h1 style="color:#00e676; text-shadow:0 0 10px green; margin-bottom:10px;">SQUAT MASTER</h1>
+        <input type="text" id="patient-id" class="input-area" value="User01" placeholder="IDを入力">
         
-        <label style="margin-top:30px; font-size:18px;">モードを選んでください:</label>
-        <select id="mode-select" style="margin-top:10px; padding:15px;">
-            <option value="training_slow">1. スロトレ (7秒ペース)</option>
-            <option value="training_self">2. セルフペース (自分の速度)</option>
-            <option value="cs30">3. CS-30 テスト (30秒間)</option>
-        </select>
-        
-        <button class="start-btn" onclick="startApp()">測定スタート</button>
-        <p style="font-size:14px; color:#aaa; margin-top:20px;">※スマホの音量をONにしてください</p>
+        <div id="main-menu" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+            <button class="big-btn btn-train" onclick="selectCategory('training')">
+                <div>🏋️ トレーニング</div>
+                <div style="font-size:14px; font-weight:normal; margin-top:5px;">スロトレ / セルフ / CS-30</div>
+            </button>
+            <button class="big-btn btn-game" onclick="selectCategory('game')">
+                <div>⚔️ ゲームモード</div>
+                <div style="font-size:14px; font-weight:normal; margin-top:5px;">モンスターを倒してスコアを競う</div>
+            </button>
+        </div>
+
+        <div id="train-menu" style="display:none; width:100%; flex-direction:column; align-items:center;">
+            <h3 style="color:#ccc;">メニューを選択</h3>
+            <button class="sub-btn selected" id="opt-slow" onclick="setTrainMode('slow')">🐢 スロートレーニング (7秒)</button>
+            <button class="sub-btn" id="opt-self" onclick="setTrainMode('self')">🙂 セルフペース</button>
+            <button class="sub-btn" id="opt-cs30" onclick="setTrainMode('cs30')">⏱ CS-30 テスト</button>
+            
+            <button class="start-btn" onclick="startApp()">測定スタート</button>
+            <button onclick="backToMain()" style="background:transparent; border:none; color:#aaa; margin-top:20px;">戻る</button>
+        </div>
     </div>
 
     <div id="result-screen" class="overlay-screen">
-        <div class="result-header">測定結果レポート</div>
-        <div style="display:flex; justify-content:space-between; width:95%; max-width:400px;">
-            <div class="stat-card" style="width:48%;">
-                <div class="stat-label">合計回数</div>
-                <div class="stat-val" id="res-reps">0</div>
-            </div>
-            <div class="stat-card" style="width:48%;">
-                <div class="stat-label">MAXコンボ</div>
-                <div class="stat-val" id="res-max-combo">0</div>
-            </div>
+        <h2 style="color:white; border-bottom:2px solid #00e676;">RESULT</h2>
+        
+        <div id="game-result-area" style="display:none; text-align:center; margin-bottom:10px;">
+            <div style="font-size:80px; font-weight:900; color:#ffd700;" id="res-rank">S</div>
+            <div style="color:#ffeb3b;">SCORE: <span id="res-score-final">0</span></div>
         </div>
-        <div style="color:white; margin-bottom:5px; font-weight:bold;">▼ 1回ごとの秒数 (疲れ具合)</div>
-        <div class="chart-container"><canvas id="speedChart"></canvas></div>
-        <div style="color:white; margin-bottom:5px; font-weight:bold;">▼ 深さとエラー (赤色は失敗)</div>
-        <div class="chart-container"><canvas id="depthChart"></canvas></div>
-        <button class="cloud-btn" id="cloud-btn" onclick="sendToGoogleSheets()">クラウドに保存 (DB送信)</button>
+
+        <div style="display:flex; justify-content:space-between; width:95%; max-width:400px;">
+            <div class="stat-card"><div style="font-size:12px;">回数</div><div class="stat-val" id="res-reps">0</div></div>
+            <div class="stat-card"><div style="font-size:12px;">疲労指数</div><div class="stat-val" id="res-fatigue">--</div></div>
+        </div>
+
+        <div style="width:100%; max-width:400px; margin-top:10px;">
+            <div style="font-size:12px; color:#aaa;">▼ スピード推移</div>
+            <div class="chart-box"><canvas id="speedChart"></canvas></div>
+            <div style="font-size:12px; color:#aaa;">▼ 深さとエラー</div>
+            <div class="chart-box"><canvas id="depthChart"></canvas></div>
+        </div>
+
+        <button class="cloud-btn" id="cloud-btn" onclick="sendToGoogleSheets()">クラウドに保存 (DB)</button>
         <button class="dl-btn" onclick="downloadCSV()">CSVで保存 (予備)</button>
-        <button class="close-btn" onclick="location.reload()">タイトルに戻る</button>
+        <button class="close-btn" onclick="location.reload()">タイトルへ</button>
     </div>
 
 <script>
+    // 1. 定数
     const GAS_URL = "https://script.google.com/macros/s/AKfycbyKqUnAi2JcfbQCzeI4498mTYEXFDCo1itE9pdnOQB9JJfyFHGvM4Z2SpkZsMjGRPsk/exec";
-    
     const KNEE_IN_THRESHOLD = 0.04; 
     const BAD_POSTURE_ANGLE = 75;
     const RESET_ANGLE = 160;   
     const DEPTH_THRESHOLD = 130; 
     const SPEECH_COOLDOWN = 3000; 
-    const SLOW_CYCLE_MS = 7000; 
+    const SLOW_CYCLE_MS = 7000;
+    const MONSTERS = [["👾", 300], ["🦇", 500], ["👻", 800], ["👹", 1200], ["🐲", 2000]];
 
-    // 変数
-    let counter = 0;
-    let currentRepMinAngle = 180;
-    let repStartTime = 0;
-    let isMovementStarted = false;
-    let hasDeepSquatted = false;
-    let hasSpokenGood = false;
-    let lastSpeechTime = 0;
+    // 2. 変数
+    let appState = {
+        mode: "", subMode: "", isRunning: false, isFinished: false, isCameraReady: false,
+        startTime: null, repStart: 0, patientID: "Guest"
+    };
+    let metrics = {
+        count: 0, minAngle: 180, isDeep: false, isMoving: false, isClean: true,
+        score: 0, combo: 0, maxCombo: 0, monsterLevel: 0, monsterHP: 0, defeated: 0, logs: []
+    };
+    let audioCtx = null;
+    let lastSpeechTime = 0; 
 
-    // コンボ関連
-    let combo = 0;
-    let maxCombo = 0;
-    let isCurrentRepClean = true; // 今のレップでエラーがないか
-
-    let appMode = "training_self"; 
-    let testStartTime = null; 
-    let isFinished = false;
-    let patientID = "";
-    let isCameraReady = false;
-    let dataLogs = []; 
-
-    // DOM
-    const videoElement = document.getElementById('input_video');
-    const canvasElement = document.getElementById('output_canvas');
+    // 3. UI Helper
+    function getEl(id) { return document.getElementById(id); }
+    
+    // 4. DOM Elements Cache
+    const videoElement = getEl('input_video');
+    const canvasElement = getEl('output_canvas');
     const canvasCtx = canvasElement.getContext('2d');
     
-    const repsDisplay = document.getElementById('reps-display');
-    const speedDisplay = document.getElementById('speed-display');
-    const sideDisplay = document.getElementById('side-display');
-    const warningDisplay = document.getElementById('warning-display');
-    const statusLamp = document.getElementById('status-lamp');
-    const timerDisplay = document.getElementById('timer-display');
-    const comboDisplay = document.getElementById('combo-display'); // New
-    
-    const depthGaugeContainer = document.getElementById('depth-gauge-container');
-    const depthBar = document.getElementById('depth-bar');
-    const targetLine = document.getElementById('target-line');
-    const targetLabel = document.getElementById('target-label');
-    const pacerContainer = document.getElementById('pacer-container');
-    const pacerGhost = document.getElementById('pacer-ghost');
-    const pacerPanel = document.getElementById('pacer-panel');
-    const pacerRepsDisplay = document.getElementById('pacer-reps-display');
+    const els = {
+        uiTraining: getEl('training-ui'),
+        uiGame: getEl('game-ui'),
+        depthGaugeContainer: getEl('depth-gauge-container'),
+        depthBar: getEl('depth-bar'),
+        targetLine: getEl('target-line'),
+        targetLabel: getEl('target-label'),
+        pacerGhost: getEl('pacer-ghost'),
+        pacerContainer: getEl('pacer-container'),
+        statusLamp: getEl('status-lamp'),
+        warningMsg: getEl('warning-msg'),
+        
+        trReps: getEl('tr-reps'), trSpeed: getEl('tr-speed'), trTimer: getEl('tr-timer'),
+        trPacerBox: getEl('tr-pacer-box'), trPacerVal: getEl('tr-pacer-val'),
+        
+        gmScore: getEl('gm-score'), monster: getEl('monster'), hpBar: getEl('hp-bar'),
+        hpText: getEl('hp-text'), monsterName: getEl('monster-name'),
+        gmComboVal: getEl('gm-combo-val'), gmLvlVal: getEl('gm-lvl-val'),
+        comboDisp: getEl('combo-display'),
+        
+        countOverlay: getEl('countdown-overlay'), countVal: getEl('countdown-val'),
+        startScreen: getEl('start-screen'), resScreen: getEl('result-screen')
+    };
 
-    const countdownOverlay = document.getElementById('countdown-overlay');
-    const countdownVal = document.getElementById('countdown-val');
-    const startScreen = document.getElementById('start-screen');
-    const resultScreen = document.getElementById('result-screen');
-
-    function calculateAngle(a, b, c, width, height) {
-        const ax = a.x * width, ay = a.y * height;
-        const bx = b.x * width, by = b.y * height;
-        const cx = c.x * width, cy = c.y * height;
-        const radians = Math.atan2(cy - by, cx - bx) - Math.atan2(ay - by, ax - bx);
-        let angle = Math.abs(radians * 180.0 / Math.PI);
-        if (angle > 180.0) angle = 360 - angle;
-        return angle;
+    // 5. Audio & Helpers
+    function initAudio() {
+        if(!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+        if(audioCtx.state === 'suspended') audioCtx.resume();
     }
-
+    function playTone(freq, type, dur) {
+        if(!audioCtx) return;
+        const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+        o.type=type; o.frequency.value=freq; g.gain.value=0.1;
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(); o.stop(audioCtx.currentTime+dur);
+    }
+    function playSound(type) {
+        if(!audioCtx) return;
+        if(type==='hit') { playTone(400,'square',0.1); setTimeout(()=>playTone(600,'square',0.1),50); }
+        if(type==='crit') { playTone(880,'sine',0.1); setTimeout(()=>playTone(1760,'sine',0.2),50); }
+        if(type==='win') { playTone(523,'triangle',0.2); setTimeout(()=>playTone(659,'triangle',0.1),100); setTimeout(()=>playTone(784,'triangle',0.4),200); }
+        if(type==='error') playTone(150,'sawtooth',0.3);
+        if(type==='count') playTone(600,'square',0.05);
+        if(type==='start') { playTone(600,'square',0.1); setTimeout(()=>playTone(1200,'square',0.1),100); }
+        if(type==='combo') {
+            let base = 440 + (metrics.combo * 50); if(base>1200)base=1200;
+            playTone(base,'triangle',0.1);
+        }
+    }
     function speak(text, force = false) {
         const now = Date.now();
         if (force || (now - lastSpeechTime > SPEECH_COOLDOWN)) {
@@ -345,426 +376,1046 @@
         }
     }
     function getNowStr() { return new Date().toLocaleString(); }
-
-    // ★ クラッカーエフェクト ★
-    function fireConfetti() {
-        confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: ['#00e676', '#ffff00', '#2196f3']
-        });
+    function calculateAngle(a, b, c) {
+        const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+        let angle = Math.abs(radians * 180.0 / Math.PI);
+        if (angle > 180.0) angle = 360 - angle;
+        return angle;
     }
-
-    // ★ コンボ表示エフェクト ★
-    function showCombo(val) {
-        comboDisplay.innerText = val + " COMBO!";
-        comboDisplay.classList.add("combo-active");
-        setTimeout(() => {
-            comboDisplay.classList.remove("combo-active");
-        }, 1000);
+    function fireConfetti() { confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 }, colors: ['#ffd700', '#00e676', '#2979ff'] }); }
+    function showComboEffect(val) {
+        els.comboDisp.innerText = val + " COMBO!";
+        els.comboDisp.classList.add("combo-active");
+        playSound('combo');
+        setTimeout(() => els.comboDisp.classList.remove("combo-active"), 800);
     }
-
-    function updateUIOverlays(angle) {
-        const minAng = 180, maxAng = 70;
-        let percentage = (minAng - angle) / (minAng - maxAng) * 100;
-        if(percentage < 0) percentage = 0; if(percentage > 100) percentage = 100;
-
-        depthBar.style.height = percentage + "%";
+    
+    function updateScore(val) { metrics.score += val; els.gmScore.innerText = metrics.score; }
+    
+    function spawnMonster() {
+        let lv = metrics.monsterLevel;
+        if(lv >= MONSTERS.length) lv = MONSTERS.length - 1;
+        const m = MONSTERS[lv];
+        els.monster.innerText = m[0];
+        els.monsterName.innerText = `Lv.${lv+1} ${m[1]}`;
+        metrics.monsterHP = m[1];
+        updateHP(m[1], m[1]);
+        els.gmLvlVal.innerText = lv + 1;
+    }
+    
+    function updateHP(cur, max) { 
+        const p = (cur / max) * 100; 
+        els.hpBar.style.width = p + "%";
+        els.hpText.innerText = `${cur} / ${max}`;
+    }
+    
+    function damageEffect(dmg, isCrit) {
+        metrics.monsterHP -= dmg;
+        if(metrics.monsterHP < 0) metrics.monsterHP = 0;
+        updateHP(metrics.monsterHP, MONSTERS[Math.min(metrics.monsterLevel, 4)][1]);
         
-        if (angle < DEPTH_THRESHOLD) {
-            depthBar.style.backgroundColor = "#00e676"; 
+        els.monster.classList.remove('damage-shake');
+        void els.monster.offsetWidth; els.monster.classList.add('damage-shake');
+        if(isCrit) { playSound('crit'); fireConfetti(); } else { playSound('hit'); }
+        if(metrics.monsterHP <= 0) {
+            setTimeout(() => {
+                playSound('win'); speak("撃破！");
+                metrics.monsterLevel++; metrics.defeated++; spawnMonster();
+            }, 500);
+        }
+    }
+
+    // 6. UI Control
+    function selectCategory(cat) {
+        appState.mode = cat;
+        if(cat === 'game') {
+            startAppLogic();
         } else {
-            depthBar.style.backgroundColor = "#00bcd4"; 
-        }
-
-        let targetPerc = (minAng - DEPTH_THRESHOLD) / (minAng - maxAng) * 100;
-        targetLine.style.top = targetPerc + "%"; 
-        targetLabel.style.top = `calc(${targetPerc}% - 12px)`; 
-
-        if (appMode === "cs30") return;
-        if (appMode === "training_self") {
-            pacerGhost.style.top = percentage + "%"; 
-        } 
-    }
-
-    function animatePacer() {
-        if (!isFinished) {
-            if (appMode === "training_slow" && testStartTime && isCameraReady) {
-                const elapsed = Date.now() - testStartTime;
-                const t = elapsed % SLOW_CYCLE_MS;
-                
-                let posPerc = 0;
-                if (t < 3000) { 
-                    posPerc = 100 - (t / 3000 * 100); 
-                } else if (t < 6000) { 
-                    posPerc = (t - 3000) / 3000 * 100; 
-                } else { 
-                    posPerc = 100; 
-                }
-                pacerGhost.style.top = posPerc + "%";
-
-                const pacerReps = Math.floor(elapsed / SLOW_CYCLE_MS);
-                pacerRepsDisplay.innerText = pacerReps;
-            }
-            requestAnimationFrame(animatePacer);
+            getEl('main-menu').style.display = 'none';
+            getEl('train-menu').style.display = 'flex';
+            setTrainMode('slow'); 
         }
     }
-
-    function onResults(results) {
-        if(isFinished) return;
-
-        if (!isCameraReady) {
-            isCameraReady = true;
-            depthGaugeContainer.style.display = "block";
-            targetLabel.style.display = "block";
-            
-            if (appMode === "cs30" || appMode === "training_slow") {
-                runCountdown();
-            } else {
-                testStartTime = Date.now();
-                speak("測定を開始します");
-            }
-        }
-
-        canvasElement.width = videoElement.videoWidth;
-        canvasElement.height = videoElement.videoHeight;
-        const w = canvasElement.width;
-        const h = canvasElement.height;
+    function setTrainMode(mode) {
+        appState.subMode = mode;
+        ['slow','self','cs30'].forEach(m => getEl('opt-'+m).classList.remove('selected'));
+        getEl('opt-'+mode).classList.add('selected');
+    }
+    function backToMain() {
+        getEl('train-menu').style.display = 'none';
+        getEl('main-menu').style.display = 'flex';
+    }
+    function startApp() { startAppLogic(); }
+    
+    function startAppLogic() {
+        appState.patientID = getEl('patient-id').value || "Guest";
+        els.startScreen.style.display = 'none';
         
+        // Mode Init
+        if(appState.mode === 'training') {
+            els.uiTraining.style.display = 'block';
+            els.uiGame.style.display = 'none';
+            if(appState.subMode === 'cs30') {
+                els.trTimer.style.display = 'block'; els.pacerContainer.style.display = 'none';
+            } else if(appState.subMode === 'slow') {
+                els.trPacerBox.style.display = 'block'; els.pacerContainer.style.display = 'block';
+                els.pacerGhost.style.top = "100%";
+            } else {
+                els.pacerContainer.style.display = 'block';
+            }
+        } else {
+            els.uiTraining.style.display = 'none';
+            els.uiGame.style.display = 'block';
+            els.pacerContainer.style.display = 'block';
+            spawnMonster();
+        }
+
+        initAudio();
+        speak("カメラを起動します");
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { if(!appState.isFinished) await pose.send({image: videoElement}); },
+            width: 1280, height: 720
+        });
+        camera.start();
+        animatePacerLoop();
+    }
+
+    function updateGauge(angle) {
+        const min=180, max=70;
+        let p = (min - angle) / (min - max) * 100;
+        if(p<0)p=0; if(p>100)p=100;
+        els.depthBar.style.height = p + "%";
+        els.depthBar.style.backgroundColor = (angle < DEPTH_THRESHOLD) ? "#00e676" : "#00bcd4";
+        let tp = (min - DEPTH_THRESHOLD) / (min - max) * 100;
+        els.targetLine.style.top = tp + "%"; 
+        if(appState.subMode !== 'slow' && appState.mode !== 'cs30') els.pacerGhost.style.top = p + "%";
+    }
+
+    function animatePacerLoop() {
+        if(!appState.isFinished) {
+            if(appState.subMode === 'slow' && appState.isRunning) {
+                const t = (Date.now() - appState.startTime) % SLOW_CYCLE_MS;
+                let pos = 0;
+                if(t < 3000) pos = 100 - (t/3000*100);
+                else if(t < 6000) pos = (t-3000)/3000*100;
+                else pos = 100;
+                els.pacerGhost.style.top = pos + "%";
+                els.trPacerVal.innerText = Math.floor((Date.now() - appState.startTime) / SLOW_CYCLE_MS);
+            }
+            requestAnimationFrame(animatePacerLoop);
+        }
+    }
+
+    function runCountdown() {
+        let c = 5;
+        els.countOverlay.style.display = 'flex';
+        if(appState.subMode === 'slow') {
+            els.countVal.innerText = "しゃがんで！"; els.countVal.style.fontSize = "60px";
+            speak("しゃがんで準備"); els.pacerGhost.style.top = "100%";
+        } else {
+            els.countVal.innerText = c; els.countVal.style.fontSize = "120px";
+            speak(String(c), true); playSound('count');
+        }
+        setTimeout(() => {
+            if(appState.subMode==='slow') { c=5; els.countVal.style.fontSize="120px"; }
+            const timer = setInterval(() => {
+                els.countVal.innerText = c;
+                speak(String(c), true);
+                if(c<=3) playSound('count');
+                c--;
+                if(c < 0) {
+                    clearInterval(timer);
+                    els.countVal.innerText = "START!";
+                    speak("スタート", true);
+                    playSound('start');
+                    setTimeout(() => {
+                        els.countOverlay.style.display = 'none';
+                        appState.startTime = Date.now();
+                        appState.isRunning = true;
+                    }, 1000);
+                }
+            }, 1000);
+        }, 1500);
+    }
+
+    function finishSession() {
+        appState.isFinished = true;
+        appState.isRunning = false;
+        speak("終了です"); playSound('win');
+        document.querySelector('.container').style.display = 'none';
+        els.resScreen.style.display = 'flex';
+        getEl('res-reps').innerText = metrics.count;
+        if(appState.mode === 'game') {
+            getEl('game-result-area').style.display = 'block';
+            getEl('res-score-final').innerText = metrics.score;
+            let r = "B";
+            if(metrics.score > metrics.count * 120) r = "S"; else if(metrics.score > metrics.count * 100) r = "A";
+            getEl('res-rank').innerText = r;
+        }
+        const lbls = metrics.logs.map(d => d.rep);
+        const spds = metrics.logs.map(d => d.duration);
+        const dpts = metrics.logs.map(d => d.depth);
+        const clrs = metrics.logs.map(d => (d.note==="Perfect")?'#00e676':'#ff1744');
+        new Chart(getEl('speedChart'), {type:'line', data:{labels:lbls, datasets:[{label:'秒数', data:spds, borderColor:'#00e676', tension:0.3}] }});
+        new Chart(getEl('depthChart'), {type:'bar', data:{labels:lbls, datasets:[{label:'深さ', data:dpts, backgroundColor:clrs}]}, options:{scales:{y:{reverse:true, min:60, max:180}}, plugins:{legend:{display:false}}}});
+    }
+
+    function sendToGoogleSheets() {
+        if(metrics.logs.length===0){alert("データなし");return;}
+        const btn=getEl('cloud-btn'); btn.innerText="送信中..."; btn.disabled=true;
+        fetch(GAS_URL, {method:'POST', body:JSON.stringify(metrics.logs), headers:{"Content-Type":"text/plain"}})
+        .then(()=>{alert("完了"); btn.innerText="送信完了";})
+        .catch(e=>{alert("エラー"); btn.disabled=false;});
+    }
+    function downloadCSV() {
+        let c = "ID,Time,Rep,Depth,Duration,Note\n";
+        metrics.logs.forEach(r => c += `${r.id},${r.time},${r.rep},${r.depth},${r.duration},${r.note}\n`);
+        const a = document.createElement("a");
+        a.href = encodeURI("data:text/csv;charset=utf-8,"+c);
+        a.download = "log.csv"; a.click();
+    }
+
+    // 7. MediaPipe Main Loop
+    function onResults(results) {
+        if(appState.isFinished) return;
+
+        if(!appState.isCameraReady) {
+            appState.isCameraReady = true;
+            els.depthGaugeContainer.style.display = 'block';
+            els.targetLabel.style.display = 'block';
+            
+            if(appState.mode === 'training') {
+                if(appState.subMode==='cs30') { /* Timer */ }
+                else if(appState.subMode==='slow') els.pacerContainer.style.display='block';
+                else els.pacerContainer.style.display='block';
+            } else {
+                els.pacerContainer.style.display='block';
+            }
+
+            const needsCount = (appState.mode==='game' || appState.subMode==='cs30' || appState.subMode==='slow');
+            if(needsCount) runCountdown();
+            else {
+                appState.startTime = Date.now();
+                appState.isRunning = true;
+                speak("スタート");
+            }
+        }
+
+        const w = videoElement.videoWidth;
+        const h = videoElement.videoHeight;
+        canvasElement.width = w; canvasElement.height = h;
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, w, h);
 
         if (results.poseLandmarks) {
             const lms = results.poseLandmarks;
+            
+            // ★復活：骨格マーカー描画
             drawConnectors(canvasCtx, lms, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
             drawLandmarks(canvasCtx, lms, {color: '#FF0000', lineWidth: 2});
 
             let side = "RIGHT";
-            let sideText = "右足";
-            if (lms[11].visibility > lms[12].visibility && lms[23].visibility > lms[24].visibility) {
-                side = "LEFT"; sideText = "左足";
-            }
-            sideDisplay.innerText = sideText;
+            if (lms[11].visibility > lms[12].visibility) side = "LEFT";
+            let sIdx=(side==="RIGHT")?12:11, hIdx=(side==="RIGHT")?24:23, kIdx=(side==="RIGHT")?26:25, aIdx=(side==="RIGHT")?28:27;
+            const shoulder=lms[sIdx], hip=lms[hIdx], knee=lms[kIdx], ankle=lms[aIdx];
 
-            let shoulder, hip, knee, ankle;
-            if (side === "RIGHT") {
-                shoulder = lms[12]; hip = lms[24]; knee = lms[26]; ankle = lms[28];
-            } else {
-                shoulder = lms[11]; hip = lms[23]; knee = lms[25]; ankle = lms[27];
-            }
-
-            if(shoulder.visibility > 0.5 && hip.visibility > 0.5 && knee.visibility > 0.5 && ankle.visibility > 0.5) {
-                const kneeAngle = calculateAngle(hip, knee, ankle, w, h);
-                const hipAngle = calculateAngle(shoulder, hip, knee, w, h);
-
-                updateUIOverlays(kneeAngle);
+            if(shoulder.visibility > 0.5 && hip.visibility > 0.5) {
+                const kneeAngle = calculateAngle(hip, knee, ankle);
+                const hipAngle = calculateAngle(shoulder, hip, knee);
+                updateGauge(kneeAngle);
                 
                 canvasCtx.beginPath();
-                canvasCtx.moveTo(shoulder.x * w, shoulder.y * h);
-                canvasCtx.lineTo(hip.x * w, hip.y * h);
-                canvasCtx.lineTo(knee.x * w, knee.y * h);
-                canvasCtx.strokeStyle = "yellow";
-                canvasCtx.lineWidth = 5;
-                canvasCtx.stroke();
+                canvasCtx.moveTo(shoulder.x*w, shoulder.y*h);
+                canvasCtx.lineTo(hip.x*w, hip.y*h);
+                canvasCtx.lineTo(knee.x*w, knee.y*h);
+                canvasCtx.strokeStyle = "yellow"; canvasCtx.lineWidth = 5; canvasCtx.stroke();
 
-                let warningList = [];
-                let isKneeIn = false;
-                if (side === "RIGHT") {
-                    if (knee.x > ankle.x + KNEE_IN_THRESHOLD) isKneeIn = true;
-                } else {
-                    if (knee.x < ankle.x - KNEE_IN_THRESHOLD) isKneeIn = true;
-                }
-                if (isKneeIn && kneeAngle < 160) {
-                     if (isMovementStarted) {
-                        warningList.push("ひざを開いて！");
-                        speak("ひざを開いて");
-                        isCurrentRepClean = false; // エラー発生
-                     }
-                }
-                if (hipAngle < BAD_POSTURE_ANGLE && kneeAngle < 160) {
-                    if (isMovementStarted) {
-                        warningList.push("胸を張って！");
-                        speak("むねをはって");
-                        isCurrentRepClean = false; // エラー発生
-                     }
-                }
-                if (warningList.length > 0) {
-                    warningDisplay.innerText = warningList.join("\n");
-                    warningDisplay.style.display = "block";
-                } else {
-                    warningDisplay.style.display = "none";
-                }
+                let warning=""; let isKneeIn=false;
+                if(side==="RIGHT" && knee.x > ankle.x + KNEE_IN_THRESHOLD) isKneeIn=true;
+                if(side==="LEFT" && knee.x < ankle.x - KNEE_IN_THRESHOLD) isKneeIn=true;
 
-                if ((appMode === "cs30" || appMode === "training_slow") && !testStartTime) {
-                    // 待機
-                } else {
-                    if (kneeAngle < 165 && !isMovementStarted) {
-                        isMovementStarted = true;
-                        repStartTime = Date.now();
-                        currentRepMinAngle = 180;
-                        hasDeepSquatted = false;
-                        hasSpokenGood = false;
-                        isCurrentRepClean = true; // 新しいレップ開始時にリセット
+                if(isKneeIn && kneeAngle < 160) {
+                    if(metrics.isMoving && metrics.isClean) {
+                        warning="ひざを開いて！"; metrics.isClean=false; speak("ひざ"); playSound('error');
                     }
+                }
+                if(hipAngle < BAD_POSTURE_ANGLE && kneeAngle < 160) {
+                    if(metrics.isMoving && metrics.isClean) {
+                        warning="胸を張って！"; metrics.isClean=false; speak("むね"); playSound('error');
+                    }
+                }
+                
+                if(warning) { els.warningMsg.innerText=warning; els.warningMsg.style.display='block'; }
+                else { els.warningMsg.style.display='none'; }
 
-                    if (isMovementStarted) {
-                        if (kneeAngle < currentRepMinAngle) currentRepMinAngle = kneeAngle;
-                        if (kneeAngle < DEPTH_THRESHOLD) {
-                            hasDeepSquatted = true;
-                            if (!hasSpokenGood && warningList.length === 0) {
-                                // ここでは音声を鳴らさず、上がった時にコンボ判定と一緒に鳴らす
-                                // speak("いい感じです", true); 
-                                hasSpokenGood = true;
-                            }
+                if(appState.isRunning) {
+                    if(kneeAngle < 165 && !metrics.isMoving) {
+                        metrics.isMoving=true; appState.repStart=Date.now(); metrics.minAngle=180;
+                        metrics.isDeep=false; metrics.isClean=true; hasSpokenGood=false;
+                    }
+                    if(metrics.isMoving) {
+                        if(kneeAngle < metrics.minAngle) metrics.minAngle = kneeAngle;
+                        if(kneeAngle < DEPTH_THRESHOLD) {
+                            metrics.isDeep=true;
+                            if(!hasSpokenGood && metrics.isClean) { hasSpokenGood=true; }
                         }
-                        if (kneeAngle > RESET_ANGLE) {
-                            if (hasDeepSquatted) {
-                                counter++;
-                                const duration = (Date.now() - repStartTime) / 1000;
-                                repsDisplay.innerText = counter;
-                                speedDisplay.innerText = duration.toFixed(2);
-                                
-                                // コンボ判定
-                                if (isCurrentRepClean) {
-                                    combo++;
-                                    if(combo > maxCombo) maxCombo = combo;
-                                    showCombo(combo); // コンボ表示
-                                    fireConfetti();   // 紙吹雪！
-                                    speak(combo + "コンボ！", true);
+                        if(kneeAngle > RESET_ANGLE) {
+                            if(metrics.isDeep) {
+                                metrics.count++;
+                                const duration = (Date.now()-appState.repStart)/1000;
+                                if(appState.mode==='training') {
+                                    els.trReps.innerText=metrics.count; els.trSpeed.innerText=duration.toFixed(2);
+                                    if(metrics.isClean) speak("OK", true);
                                 } else {
-                                    combo = 0; // 失敗でリセット
-                                    speak("おしい", true);
+                                    let damage=0, isCrit=false;
+                                    if(metrics.isClean) {
+                                        metrics.combo++; if(metrics.combo>metrics.maxCombo) metrics.maxCombo=metrics.combo;
+                                        if(metrics.minAngle<100) { damage=150+metrics.combo*10; isCrit=true; }
+                                        else { damage=100+metrics.combo*5; }
+                                        updateScore(damage); showComboEffect(metrics.combo);
+                                    } else {
+                                        metrics.combo=0; damage=10; updateScore(10); speak("おしい");
+                                    }
+                                    damageEffect(damage, isCrit);
+                                    els.gmComboVal.innerText = metrics.combo;
                                 }
-
-                                const errorNote = warningList.length > 0 ? warningList.join("|") : "Perfect";
-                                dataLogs.push({
-                                    id: patientID,
-                                    time: getNowStr(),
-                                    rep: counter,
-                                    depth: Math.floor(currentRepMinAngle),
-                                    duration: parseFloat(duration.toFixed(2)),
-                                    note: errorNote
+                                metrics.logs.push({
+                                    id: appState.patientID, time: getNowStr(),
+                                    rep: metrics.count, depth: Math.floor(metrics.minAngle),
+                                    duration: parseFloat(duration.toFixed(2)), note: metrics.isClean?"Perfect":"Error"
                                 });
                             }
-                            isMovementStarted = false;
-                            hasDeepSquatted = false;
+                            metrics.isMoving=false; metrics.isDeep=false;
                         }
                     }
                 }
-
-                if (hasDeepSquatted) {
-                    statusLamp.className = "status-lamp lamp-ready";
-                    statusLamp.innerText = "OK!";
-                } else {
-                    statusLamp.className = "status-lamp lamp-squat";
-                    statusLamp.innerText = "しゃがむ";
-                }
-            } 
-        }
-
-        if (appMode === "cs30" && !isFinished && testStartTime) {
-            const elapsed = (Date.now() - testStartTime) / 1000;
-            let remaining = 30 - elapsed;
-            if (remaining <= 0) {
-                remaining = 0;
-                showResults(); 
+                if(metrics.isDeep) { els.statusLamp.innerText="OK!"; els.statusLamp.className="status-lamp lamp-ready"; }
+                else { els.statusLamp.innerText="しゃがむ"; els.statusLamp.className="status-lamp lamp-squat"; }
             }
-            timerDisplay.innerText = "残り " + Math.ceil(remaining) + "秒";
         }
 
+        if(appState.subMode==='cs30' && appState.isRunning && !appState.isFinished) {
+            const elap = (Date.now()-appState.startTime)/1000;
+            let rem = 30-elap;
+            if(rem<=0) { rem=0; finishSession(); }
+            els.trTimer.innerText = Math.ceil(rem);
+        }
         canvasCtx.restore();
     }
 
-    const pose = new Pose({locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-    }});
-    
-    pose.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
+    const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+    pose.setOptions({modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
     pose.onResults(onResults);
+</script>
+</body>
+</html><!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Squat Master Ultimate (Final Fixed)</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
-    const camera = new Camera(videoElement, {
-        onFrame: async () => {
-            if(!isFinished) await pose.send({image: videoElement});
-        },
-        width: 1280,
-        height: 720
-    });
-
-    function startApp() {
-        patientID = document.getElementById('patient-id').value || "Guest";
-        appMode = document.getElementById('mode-select').value;
-        startScreen.style.display = 'none';
-
-        if (appMode === 'cs30') {
-            timerDisplay.style.display = "block";
-            pacerContainer.style.display = "none";
-            pacerPanel.style.display = "none";
-        } else if (appMode === 'training_slow') {
-            timerDisplay.style.display = "none";
-            pacerContainer.style.display = "block";
-            pacerPanel.style.display = "block";
-            pacerGhost.style.top = "100%"; 
-        } else {
-            timerDisplay.style.display = "none";
-            pacerContainer.style.display = "block";
-            pacerPanel.style.display = "none";
+    <style>
+        body { margin: 0; padding: 0; background-color: #121212; font-family: "Hiragino Kaku Gothic ProN", sans-serif; overflow: hidden; }
+        .container { position: relative; width: 100vw; height: 100vh; }
+        
+        #input_video { 
+            position: absolute; width: 100%; height: 100%; 
+            object-fit: cover; transform: scaleX(-1); z-index: 0;
+        }
+        #output_canvas { 
+            position: absolute; width: 100%; height: 100%; 
+            object-fit: cover; transform: scaleX(-1); z-index: 1;
         }
         
-        const uttr = new SpeechSynthesisUtterance("カメラを起動します");
-        uttr.lang = 'ja-JP';
-        window.speechSynthesis.speak(uttr);
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
 
+        /* === 共通UI === */
+        #depth-gauge-container {
+            position: absolute; left: 15px; top: 20%; bottom: 20%; width: 40px;
+            background: rgba(0, 0, 0, 0.5); border-radius: 20px; border: 2px solid #fff; 
+            display: none;
+        }
+        #depth-bar { position: absolute; top: 0; left: 0; width: 100%; height: 0%; background: #00bcd4; transition: height 0.05s linear; }
+        #target-line { position: absolute; left: 0; width: 100%; height: 4px; background: #ff4081; z-index: 5; }
+        #target-label { position: absolute; left: 60px; color: #ff4081; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 0 black; display: none; }
+        
+        #pacer-container {
+            position: absolute; right: 15px; top: 20%; bottom: 20%; width: 10px;
+            background: rgba(255, 255, 255, 0.2); border-radius: 5px; 
+            display: none;
+        }
+        #pacer-ghost {
+            position: absolute; left: -15px; width: 40px; height: 40px;
+            background: #2979ff; border: 3px solid white; border-radius: 50%; top: 100%;
+            box-shadow: 0 0 15px #2979ff;
+        }
+
+        /* === モード別UI === */
+        #training-ui { display: none; }
+        #game-ui { display: none; }
+
+        .info-panel {
+            position: absolute; top: 20px; left: 70px;
+            background: rgba(0, 0, 0, 0.7); padding: 15px; border-radius: 12px;
+            color: white; width: 140px; border: 1px solid #555;
+        }
+        .info-label { font-size: 12px; color: #ccc; }
+        .info-val { font-size: 36px; font-weight: bold; line-height:1.0; }
+        
+        .timer-box {
+            position: absolute; top: 20px; right: 20px; background: #000; color: #00e676;
+            padding: 5px 20px; border-radius: 8px; font-size: 32px; font-weight: bold; border: 2px solid #00e676;
+            display: none;
+        }
+        
+        .pacer-counter {
+            position: absolute; bottom: 120px; right: 60px;
+            background: rgba(41, 121, 255, 0.8); padding: 10px; border-radius: 8px;
+            color: white; text-align: center; display: none; width: 100px;
+        }
+
+        /* ゲーム用 */
+        .score-board {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            text-align: center; width: 250px;
+        }
+        .score-val { 
+            font-size: 56px; font-weight: 900; color: #fff; 
+            text-shadow: 0 0 10px #ffd700, 2px 2px 0 #000; font-style: italic; line-height: 1.0;
+        }
+        #battle-stage {
+            position: absolute; top: 15%; left: 50%; transform: translateX(-50%);
+            width: 300px; text-align: center;
+        }
+        #monster-name {
+            background: rgba(0,0,0,0.6); padding: 4px 15px; border-radius: 15px; 
+            color: #00e676; font-weight: bold; font-size: 16px; display: inline-block; margin-bottom: 5px;
+            border: 1px solid #00e676;
+        }
+        #monster { font-size: 100px; filter: drop-shadow(0 0 10px red); transition: transform 0.1s; display:inline-block; }
+        .damage-shake { animation: shake 0.3s; }
+        @keyframes shake { 0% {transform: rotate(0deg);} 25% {transform: rotate(10deg);} 75% {transform: rotate(-10deg);} 100% {transform: rotate(0deg);} }
+        
+        .hp-container {
+            width: 100%; height: 24px; background: #333; border: 2px solid white; border-radius: 12px;
+            margin-top: 5px; overflow: hidden; position: relative;
+        }
+        #hp-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #ff1744, #ff4081); transition: width 0.3s; }
+        #hp-text {
+            position: absolute; top: 0; left: 0; width: 100%; text-align: center;
+            font-size: 16px; font-weight: bold; color: white; line-height: 24px; text-shadow: 1px 1px 0 #000;
+        }
+        
+        #combo-display {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-5deg);
+            font-size: 80px; font-weight: 900; color: #ffeb3b; 
+            text-shadow: 4px 4px 0 #f57f17, -2px -2px 0 white;
+            font-style: italic; pointer-events: none; opacity: 0;
+            transition: transform 0.1s, opacity 0.3s; z-index: 20;
+        }
+        .combo-active { opacity: 1 !important; transform: translate(-50%, -50%) rotate(-5deg) scale(1.3) !important; }
+
+        /* 警告 & ステータス */
+        .warning-text {
+            position: absolute; top: 60%; left: 50%; transform: translateX(-50%);
+            font-size: 28px; font-weight: bold; color: #ff1744; 
+            background: rgba(255, 255, 255, 0.9); padding: 10px 20px; border-radius: 10px; border: 3px solid red; display: none;
+        }
+        .status-lamp {
+            position: absolute; bottom: 100px; right: 20px;
+            padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold;
+            color: white; text-align: center; width: 80px;
+        }
+        .lamp-ready { background-color: #00e676; box-shadow: 0 0 15px #00e676; }
+        .lamp-squat { background-color: #555; }
+
+        .finish-btn {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(45deg, #f44336, #ff9800); color: white; border: none;
+            padding: 15px 50px; font-size: 20px; border-radius: 30px; font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); cursor: pointer; pointer-events: auto;
+        }
+
+        /* オーバーレイ */
+        #countdown-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 15; display: none;
+            justify-content: center; align-items: center;
+        }
+        .countdown-text { font-size: 120px; font-weight: bold; color: white; text-shadow: 0 0 30px cyan; text-align: center;}
+
+        .overlay-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #222; z-index: 20; display: flex; flex-direction: column; align-items: center; color: white;
+            pointer-events: auto; overflow-y: auto; padding-top: 40px;
+        }
+        
+        #start-screen { justify-content: center; }
+        
+        .big-btn {
+            width: 80%; max-width: 350px; padding: 25px; margin: 15px; border-radius: 15px; border: none;
+            font-size: 24px; font-weight: bold; color: white; cursor: pointer; text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); transition: transform 0.1s;
+        }
+        .big-btn:active { transform: scale(0.95); }
+        .btn-train { background: linear-gradient(135deg, #00c853, #64dd17); }
+        .btn-game { background: linear-gradient(135deg, #2979ff, #00e5ff); }
+        
+        .sub-btn {
+            width: 70%; padding: 15px; margin: 10px; border-radius: 10px; border: 2px solid #555;
+            font-size: 18px; color: white; background: #333; cursor: pointer;
+        }
+        .sub-btn.selected { border-color: #00e676; background: #003300; }
+
+        .input-area { padding: 10px; font-size: 18px; text-align: center; border-radius: 5px; width: 60%; margin-bottom: 20px;}
+
+        /* リザルト */
+        #result-screen { display: none; }
+        .stat-card { background: #333; padding: 15px; border-radius: 10px; width: 45%; text-align: center; margin-bottom: 10px;}
+        .stat-val { font-size: 32px; font-weight: bold; }
+        .chart-box { width: 100%; max-width: 400px; height: 180px; background: white; border-radius: 8px; margin-bottom: 10px; }
+        
+        button.cloud-btn { background: #2962ff; color: white; width: 90%; padding: 15px; border-radius:30px; border:none; font-weight:bold; margin-top:10px;}
+        button.dl-btn { background: #555; color: white; margin-top: 10px; font-size: 14px; padding: 10px; border-radius: 5px; border:none;}
+        button.close-btn { background: #333; color: #aaa; margin-top: 30px; padding: 15px; font-size: 16px; border: 1px solid #555;}
+        
+        .angle-monitor { display: none; } 
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <video id="input_video" playsinline></video>
+        <canvas id="output_canvas"></canvas>
+        
+        <div id="countdown-overlay"><div class="countdown-text" id="countdown-val">5</div></div>
+
+        <div class="ui-layer">
+            <div id="depth-gauge-container"><div id="depth-bar"></div><div id="target-line"></div></div>
+            <div id="target-label">LINE</div>
+            <div id="pacer-container"><div id="pacer-ghost"></div></div>
+
+            <div id="training-ui">
+                <div class="info-panel">
+                    <div class="info-label">回数</div><div class="info-val" id="tr-reps">0</div>
+                    <div style="height:10px;"></div>
+                    <div class="info-label">秒数</div><div class="info-val" id="tr-speed">0.0</div>
+                </div>
+                <div class="timer-box" id="tr-timer">30</div>
+                <div class="pacer-counter" id="tr-pacer-box">
+                    <div style="font-size:10px;">ペース</div><div style="font-size:24px; font-weight:bold;" id="tr-pacer-val">0</div>
+                </div>
+            </div>
+
+            <div id="game-ui">
+                <div class="info-panel">
+                    <div class="info-label">LEVEL</div><div class="info-val" id="gm-lvl-val">1</div>
+                    <div style="height:10px;"></div>
+                    <div class="info-label">COMBO</div><div class="info-val" id="gm-combo-val">0</div>
+                </div>
+
+                <div class="score-board">
+                    <div style="font-size:12px; color:#ffd700; font-weight:bold;">SCORE</div>
+                    <div class="score-val" id="gm-score">0</div>
+                </div>
+                <div id="battle-stage">
+                    <div id="monster-name">Lv.1 スライム</div>
+                    <div id="monster">👾</div>
+                    <div class="hp-container">
+                        <div id="hp-bar"></div>
+                        <div id="hp-text">100/100</div>
+                    </div>
+                </div>
+                <div id="combo-display"></div>
+            </div>
+
+            <div class="warning-text" id="warning-msg"></div>
+            <div class="status-lamp lamp-squat" id="status-lamp">DOWN</div>
+            <button class="finish-btn" onclick="finishSession()">終了・解析</button>
+        </div>
+    </div>
+
+    <div id="start-screen" class="overlay-screen">
+        <h1 style="color:#00e676; text-shadow:0 0 10px green; margin-bottom:10px;">SQUAT MASTER</h1>
+        <input type="text" id="patient-id" class="input-area" value="User01" placeholder="IDを入力">
+        
+        <div id="main-menu" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+            <button class="big-btn btn-train" onclick="selectCategory('training')">
+                <div>🏋️ トレーニング</div>
+                <div style="font-size:14px; font-weight:normal; margin-top:5px;">スロトレ / セルフ / CS-30</div>
+            </button>
+            <button class="big-btn btn-game" onclick="selectCategory('game')">
+                <div>⚔️ ゲームモード</div>
+                <div style="font-size:14px; font-weight:normal; margin-top:5px;">モンスターを倒してスコアを競う</div>
+            </button>
+        </div>
+
+        <div id="train-menu" style="display:none; width:100%; flex-direction:column; align-items:center;">
+            <h3 style="color:#ccc;">メニューを選択</h3>
+            <button class="sub-btn selected" id="opt-slow" onclick="setTrainMode('slow')">🐢 スロートレーニング (7秒)</button>
+            <button class="sub-btn" id="opt-self" onclick="setTrainMode('self')">🙂 セルフペース</button>
+            <button class="sub-btn" id="opt-cs30" onclick="setTrainMode('cs30')">⏱ CS-30 テスト</button>
+            
+            <button class="start-btn" onclick="startApp()">測定スタート</button>
+            <button onclick="backToMain()" style="background:transparent; border:none; color:#aaa; margin-top:20px;">戻る</button>
+        </div>
+    </div>
+
+    <div id="result-screen" class="overlay-screen">
+        <h2 style="color:white; border-bottom:2px solid #00e676;">RESULT</h2>
+        
+        <div id="game-result-area" style="display:none; text-align:center; margin-bottom:10px;">
+            <div style="font-size:80px; font-weight:900; color:#ffd700;" id="res-rank">S</div>
+            <div style="color:#ffeb3b;">SCORE: <span id="res-score-final">0</span></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; width:95%; max-width:400px;">
+            <div class="stat-card"><div style="font-size:12px;">回数</div><div class="stat-val" id="res-reps">0</div></div>
+            <div class="stat-card"><div style="font-size:12px;">疲労指数</div><div class="stat-val" id="res-fatigue">--</div></div>
+        </div>
+
+        <div style="width:100%; max-width:400px; margin-top:10px;">
+            <div style="font-size:12px; color:#aaa;">▼ スピード推移</div>
+            <div class="chart-box"><canvas id="speedChart"></canvas></div>
+            <div style="font-size:12px; color:#aaa;">▼ 深さとエラー</div>
+            <div class="chart-box"><canvas id="depthChart"></canvas></div>
+        </div>
+
+        <button class="cloud-btn" id="cloud-btn" onclick="sendToGoogleSheets()">クラウドに保存 (DB)</button>
+        <button class="dl-btn" onclick="downloadCSV()">CSVで保存 (予備)</button>
+        <button class="close-btn" onclick="location.reload()">タイトルへ</button>
+    </div>
+
+<script>
+    // 1. 定数
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbyKqUnAi2JcfbQCzeI4498mTYEXFDCo1itE9pdnOQB9JJfyFHGvM4Z2SpkZsMjGRPsk/exec";
+    const KNEE_IN_THRESHOLD = 0.04; 
+    const BAD_POSTURE_ANGLE = 75;
+    const RESET_ANGLE = 160;   
+    const DEPTH_THRESHOLD = 130; 
+    const SPEECH_COOLDOWN = 3000; 
+    const SLOW_CYCLE_MS = 7000;
+    const MONSTERS = [["👾", 300], ["🦇", 500], ["👻", 800], ["👹", 1200], ["🐲", 2000]];
+
+    // 2. 変数
+    let appState = {
+        mode: "", subMode: "", isRunning: false, isFinished: false, isCameraReady: false,
+        startTime: null, repStart: 0, patientID: "Guest"
+    };
+    let metrics = {
+        count: 0, minAngle: 180, isDeep: false, isMoving: false, isClean: true,
+        score: 0, combo: 0, maxCombo: 0, monsterLevel: 0, monsterHP: 0, defeated: 0, logs: []
+    };
+    let audioCtx = null;
+    let lastSpeechTime = 0; 
+
+    // 3. UI Helper
+    function getEl(id) { return document.getElementById(id); }
+    
+    // 4. DOM Elements Cache
+    const videoElement = getEl('input_video');
+    const canvasElement = getEl('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    
+    const els = {
+        uiTraining: getEl('training-ui'),
+        uiGame: getEl('game-ui'),
+        depthGaugeContainer: getEl('depth-gauge-container'),
+        depthBar: getEl('depth-bar'),
+        targetLine: getEl('target-line'),
+        targetLabel: getEl('target-label'),
+        pacerGhost: getEl('pacer-ghost'),
+        pacerContainer: getEl('pacer-container'),
+        statusLamp: getEl('status-lamp'),
+        warningMsg: getEl('warning-msg'),
+        
+        trReps: getEl('tr-reps'), trSpeed: getEl('tr-speed'), trTimer: getEl('tr-timer'),
+        trPacerBox: getEl('tr-pacer-box'), trPacerVal: getEl('tr-pacer-val'),
+        
+        gmScore: getEl('gm-score'), monster: getEl('monster'), hpBar: getEl('hp-bar'),
+        hpText: getEl('hp-text'), monsterName: getEl('monster-name'),
+        gmComboVal: getEl('gm-combo-val'), gmLvlVal: getEl('gm-lvl-val'),
+        comboDisp: getEl('combo-display'),
+        
+        countOverlay: getEl('countdown-overlay'), countVal: getEl('countdown-val'),
+        startScreen: getEl('start-screen'), resScreen: getEl('result-screen')
+    };
+
+    // 5. Audio & Helpers
+    function initAudio() {
+        if(!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+    }
+    function playTone(freq, type, dur) {
+        if(!audioCtx) return;
+        const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+        o.type=type; o.frequency.value=freq; g.gain.value=0.1;
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(); o.stop(audioCtx.currentTime+dur);
+    }
+    function playSound(type) {
+        if(!audioCtx) return;
+        if(type==='hit') { playTone(400,'square',0.1); setTimeout(()=>playTone(600,'square',0.1),50); }
+        if(type==='crit') { playTone(880,'sine',0.1); setTimeout(()=>playTone(1760,'sine',0.2),50); }
+        if(type==='win') { playTone(523,'triangle',0.2); setTimeout(()=>playTone(659,'triangle',0.1),100); setTimeout(()=>playTone(784,'triangle',0.4),200); }
+        if(type==='error') playTone(150,'sawtooth',0.3);
+        if(type==='count') playTone(600,'square',0.05);
+        if(type==='start') { playTone(600,'square',0.1); setTimeout(()=>playTone(1200,'square',0.1),100); }
+        if(type==='combo') {
+            let base = 440 + (metrics.combo * 50); if(base>1200)base=1200;
+            playTone(base,'triangle',0.1);
+        }
+    }
+    function speak(text, force = false) {
+        const now = Date.now();
+        if (force || (now - lastSpeechTime > SPEECH_COOLDOWN)) {
+            const uttr = new SpeechSynthesisUtterance(text);
+            uttr.lang = 'ja-JP'; uttr.rate = 1.2;
+            window.speechSynthesis.speak(uttr);
+            lastSpeechTime = now;
+        }
+    }
+    function getNowStr() { return new Date().toLocaleString(); }
+    function calculateAngle(a, b, c) {
+        const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+        let angle = Math.abs(radians * 180.0 / Math.PI);
+        if (angle > 180.0) angle = 360 - angle;
+        return angle;
+    }
+    function fireConfetti() { confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 }, colors: ['#ffd700', '#00e676', '#2979ff'] }); }
+    function showComboEffect(val) {
+        els.comboDisp.innerText = val + " COMBO!";
+        els.comboDisp.classList.add("combo-active");
+        playSound('combo');
+        setTimeout(() => els.comboDisp.classList.remove("combo-active"), 800);
+    }
+    
+    function updateScore(val) { metrics.score += val; els.gmScore.innerText = metrics.score; }
+    
+    function spawnMonster() {
+        let lv = metrics.monsterLevel;
+        if(lv >= MONSTERS.length) lv = MONSTERS.length - 1;
+        const m = MONSTERS[lv];
+        els.monster.innerText = m[0];
+        els.monsterName.innerText = `Lv.${lv+1} ${m[1]}`;
+        metrics.monsterHP = m[1];
+        updateHP(m[1], m[1]);
+        els.gmLvlVal.innerText = lv + 1;
+    }
+    
+    function updateHP(cur, max) { 
+        const p = (cur / max) * 100; 
+        els.hpBar.style.width = p + "%";
+        els.hpText.innerText = `${cur} / ${max}`;
+    }
+    
+    function damageEffect(dmg, isCrit) {
+        metrics.monsterHP -= dmg;
+        if(metrics.monsterHP < 0) metrics.monsterHP = 0;
+        updateHP(metrics.monsterHP, MONSTERS[Math.min(metrics.monsterLevel, 4)][1]);
+        
+        els.monster.classList.remove('damage-shake');
+        void els.monster.offsetWidth; els.monster.classList.add('damage-shake');
+        if(isCrit) { playSound('crit'); fireConfetti(); } else { playSound('hit'); }
+        if(metrics.monsterHP <= 0) {
+            setTimeout(() => {
+                playSound('win'); speak("撃破！");
+                metrics.monsterLevel++; metrics.defeated++; spawnMonster();
+            }, 500);
+        }
+    }
+
+    // 6. UI Control
+    function selectCategory(cat) {
+        appState.mode = cat;
+        if(cat === 'game') {
+            startAppLogic();
+        } else {
+            getEl('main-menu').style.display = 'none';
+            getEl('train-menu').style.display = 'flex';
+            setTrainMode('slow'); 
+        }
+    }
+    function setTrainMode(mode) {
+        appState.subMode = mode;
+        ['slow','self','cs30'].forEach(m => getEl('opt-'+m).classList.remove('selected'));
+        getEl('opt-'+mode).classList.add('selected');
+    }
+    function backToMain() {
+        getEl('train-menu').style.display = 'none';
+        getEl('main-menu').style.display = 'flex';
+    }
+    function startApp() { startAppLogic(); }
+    
+    function startAppLogic() {
+        appState.patientID = getEl('patient-id').value || "Guest";
+        els.startScreen.style.display = 'none';
+        
+        // Mode Init
+        if(appState.mode === 'training') {
+            els.uiTraining.style.display = 'block';
+            els.uiGame.style.display = 'none';
+            if(appState.subMode === 'cs30') {
+                els.trTimer.style.display = 'block'; els.pacerContainer.style.display = 'none';
+            } else if(appState.subMode === 'slow') {
+                els.trPacerBox.style.display = 'block'; els.pacerContainer.style.display = 'block';
+                els.pacerGhost.style.top = "100%";
+            } else {
+                els.pacerContainer.style.display = 'block';
+            }
+        } else {
+            els.uiTraining.style.display = 'none';
+            els.uiGame.style.display = 'block';
+            els.pacerContainer.style.display = 'block';
+            spawnMonster();
+        }
+
+        initAudio();
+        speak("カメラを起動します");
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { if(!appState.isFinished) await pose.send({image: videoElement}); },
+            width: 1280, height: 720
+        });
         camera.start();
-        animatePacer();
+        animatePacerLoop();
+    }
+
+    function updateGauge(angle) {
+        const min=180, max=70;
+        let p = (min - angle) / (min - max) * 100;
+        if(p<0)p=0; if(p>100)p=100;
+        els.depthBar.style.height = p + "%";
+        els.depthBar.style.backgroundColor = (angle < DEPTH_THRESHOLD) ? "#00e676" : "#00bcd4";
+        let tp = (min - DEPTH_THRESHOLD) / (min - max) * 100;
+        els.targetLine.style.top = tp + "%"; 
+        if(appState.subMode !== 'slow' && appState.mode !== 'cs30') els.pacerGhost.style.top = p + "%";
+    }
+
+    function animatePacerLoop() {
+        if(!appState.isFinished) {
+            if(appState.subMode === 'slow' && appState.isRunning) {
+                const t = (Date.now() - appState.startTime) % SLOW_CYCLE_MS;
+                let pos = 0;
+                if(t < 3000) pos = 100 - (t/3000*100);
+                else if(t < 6000) pos = (t-3000)/3000*100;
+                else pos = 100;
+                els.pacerGhost.style.top = pos + "%";
+                els.trPacerVal.innerText = Math.floor((Date.now() - appState.startTime) / SLOW_CYCLE_MS);
+            }
+            requestAnimationFrame(animatePacerLoop);
+        }
     }
 
     function runCountdown() {
-        let count = 5;
-        countdownOverlay.style.display = 'flex';
-        
-        if (appMode === "training_slow") {
-            countdownVal.innerText = "しゃがんで！";
-            countdownVal.style.fontSize = "60px";
-            speak("しゃがんで準備してください", true);
-            pacerGhost.style.top = "100%";
+        let c = 5;
+        els.countOverlay.style.display = 'flex';
+        if(appState.subMode === 'slow') {
+            els.countVal.innerText = "しゃがんで！"; els.countVal.style.fontSize = "60px";
+            speak("しゃがんで準備"); els.pacerGhost.style.top = "100%";
         } else {
-            countdownVal.innerText = count;
-            countdownVal.style.fontSize = "150px";
-            speak(String(count), true);
+            els.countVal.innerText = c; els.countVal.style.fontSize = "120px";
+            speak(String(c), true); playSound('count');
         }
-
         setTimeout(() => {
-             if (appMode === "training_slow") {
-                 count = 5; 
-                 countdownVal.style.fontSize = "150px";
-             }
-             
-             const timer = setInterval(() => {
-                countdownVal.innerText = count;
-                speak(String(count), true);
-                
-                count--;
-                if (count < 0) {
+            if(appState.subMode==='slow') { c=5; els.countVal.style.fontSize="120px"; }
+            const timer = setInterval(() => {
+                els.countVal.innerText = c;
+                speak(String(c), true);
+                if(c<=3) playSound('count');
+                c--;
+                if(c < 0) {
                     clearInterval(timer);
-                    countdownVal.innerText = "スタート！";
+                    els.countVal.innerText = "START!";
                     speak("スタート", true);
-                    
+                    playSound('start');
                     setTimeout(() => {
-                        countdownOverlay.style.display = 'none';
-                        testStartTime = Date.now(); 
+                        els.countOverlay.style.display = 'none';
+                        appState.startTime = Date.now();
+                        appState.isRunning = true;
                     }, 1000);
                 }
             }, 1000);
-        }, 2000); 
+        }, 1500);
     }
 
-    function showResults() {
-        if(isFinished) return;
-        isFinished = true;
-        speak("終了です。お疲れ様でした。");
-
-        document.querySelector('.container').style.display = 'none'; 
-        resultScreen.style.display = 'flex'; 
-
-        document.getElementById('res-reps').innerText = counter;
-        document.getElementById('res-max-combo').innerText = maxCombo; // コンボ表示
-
-        let fatigueIndex = 0;
-        if (dataLogs.length >= 6) { 
-            const first3 = dataLogs.slice(0, 3);
-            const last3 = dataLogs.slice(-3);
-            const avgFirst = first3.reduce((sum, d) => sum + d.duration, 0) / 3;
-            const avgLast = last3.reduce((sum, d) => sum + d.duration, 0) / 3;
-            fatigueIndex = (avgLast / avgFirst).toFixed(2);
-        } else {
-            fatigueIndex = "-";
+    function finishSession() {
+        appState.isFinished = true;
+        appState.isRunning = false;
+        speak("終了です"); playSound('win');
+        document.querySelector('.container').style.display = 'none';
+        els.resScreen.style.display = 'flex';
+        getEl('res-reps').innerText = metrics.count;
+        if(appState.mode === 'game') {
+            getEl('game-result-area').style.display = 'block';
+            getEl('res-score-final').innerText = metrics.score;
+            let r = "B";
+            if(metrics.score > metrics.count * 120) r = "S"; else if(metrics.score > metrics.count * 100) r = "A";
+            getEl('res-rank').innerText = r;
         }
-        document.getElementById('res-fatigue').innerText = fatigueIndex;
-
-        const labels = dataLogs.map(d => d.rep);
-        const speeds = dataLogs.map(d => d.duration);
-        const depths = dataLogs.map(d => d.depth);
-        const depthColors = dataLogs.map(d => (d.note === "Perfect") ? '#2196f3' : '#f44336');
-
-        new Chart(document.getElementById('speedChart'), {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: '動作時間 (秒)',
-                    data: speeds,
-                    borderColor: '#00e676',
-                    backgroundColor: 'rgba(0, 230, 118, 0.2)',
-                    tension: 0.3
-                }]
-            },
-            options: { scales: { y: { beginAtZero: true } } }
-        });
-
-        new Chart(document.getElementById('depthChart'), {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'しゃがみ深さ (角度)',
-                    data: depths,
-                    backgroundColor: depthColors
-                }]
-            },
-            options: { 
-                scales: { y: { reverse: true, min: 60, max: 180 } }, 
-                plugins: { legend: { display: false } }
-            }
-        });
+        const lbls = metrics.logs.map(d => d.rep);
+        const spds = metrics.logs.map(d => d.duration);
+        const dpts = metrics.logs.map(d => d.depth);
+        const clrs = metrics.logs.map(d => (d.note==="Perfect")?'#00e676':'#ff1744');
+        new Chart(getEl('speedChart'), {type:'line', data:{labels:lbls, datasets:[{label:'秒数', data:spds, borderColor:'#00e676', tension:0.3}] }});
+        new Chart(getEl('depthChart'), {type:'bar', data:{labels:lbls, datasets:[{label:'深さ', data:dpts, backgroundColor:clrs}]}, options:{scales:{y:{reverse:true, min:60, max:180}}, plugins:{legend:{display:false}}}});
     }
 
     function sendToGoogleSheets() {
-        if(dataLogs.length === 0) {
-            alert("送信するデータがありません");
-            return;
-        }
-        const btn = document.getElementById('cloud-btn');
-        const originalText = btn.innerText;
-        btn.innerText = "送信中...";
-        btn.disabled = true;
-
-        fetch(GAS_URL, {
-            method: 'POST',
-            body: JSON.stringify(dataLogs),
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-        })
-        .then(response => {
-            alert("クラウドへの保存が完了しました！");
-            btn.innerText = "送信完了";
-        })
-        .catch(error => {
-            alert("送信エラー: " + error);
-            btn.innerText = originalText;
-            btn.disabled = false;
-        });
+        if(metrics.logs.length===0){alert("データなし");return;}
+        const btn=getEl('cloud-btn'); btn.innerText="送信中..."; btn.disabled=true;
+        fetch(GAS_URL, {method:'POST', body:JSON.stringify(metrics.logs), headers:{"Content-Type":"text/plain"}})
+        .then(()=>{alert("完了"); btn.innerText="送信完了";})
+        .catch(e=>{alert("エラー"); btn.disabled=false;});
     }
-
     function downloadCSV() {
-        let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "PatientID,Timestamp,Rep_Count,Depth,Duration,Form_Note\n";
-        dataLogs.forEach(row => {
-            csvContent += `${row.id},${row.time},${row.rep},${row.depth},${row.duration},${row.note}\n`;
-        });
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        const fileName = `squat_log_${patientID}_${Date.now()}.csv`;
-        link.setAttribute("download", fileName);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        let c = "ID,Time,Rep,Depth,Duration,Note\n";
+        metrics.logs.forEach(r => c += `${r.id},${r.time},${r.rep},${r.depth},${r.duration},${r.note}\n`);
+        const a = document.createElement("a");
+        a.href = encodeURI("data:text/csv;charset=utf-8,"+c);
+        a.download = "log.csv"; a.click();
     }
+
+    // 7. MediaPipe Main Loop
+    function onResults(results) {
+        if(appState.isFinished) return;
+
+        if(!appState.isCameraReady) {
+            appState.isCameraReady = true;
+            els.depthGaugeContainer.style.display = 'block';
+            els.targetLabel.style.display = 'block';
+            
+            if(appState.mode === 'training') {
+                if(appState.subMode==='cs30') { /* Timer */ }
+                else if(appState.subMode==='slow') els.pacerContainer.style.display='block';
+                else els.pacerContainer.style.display='block';
+            } else {
+                els.pacerContainer.style.display='block';
+            }
+
+            const needsCount = (appState.mode==='game' || appState.subMode==='cs30' || appState.subMode==='slow');
+            if(needsCount) runCountdown();
+            else {
+                appState.startTime = Date.now();
+                appState.isRunning = true;
+                speak("スタート");
+            }
+        }
+
+        const w = videoElement.videoWidth;
+        const h = videoElement.videoHeight;
+        canvasElement.width = w; canvasElement.height = h;
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, w, h);
+
+        if (results.poseLandmarks) {
+            const lms = results.poseLandmarks;
+            
+            // ★復活：骨格マーカー描画
+            drawConnectors(canvasCtx, lms, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+            drawLandmarks(canvasCtx, lms, {color: '#FF0000', lineWidth: 2});
+
+            let side = "RIGHT";
+            if (lms[11].visibility > lms[12].visibility) side = "LEFT";
+            let sIdx=(side==="RIGHT")?12:11, hIdx=(side==="RIGHT")?24:23, kIdx=(side==="RIGHT")?26:25, aIdx=(side==="RIGHT")?28:27;
+            const shoulder=lms[sIdx], hip=lms[hIdx], knee=lms[kIdx], ankle=lms[aIdx];
+
+            if(shoulder.visibility > 0.5 && hip.visibility > 0.5) {
+                const kneeAngle = calculateAngle(hip, knee, ankle);
+                const hipAngle = calculateAngle(shoulder, hip, knee);
+                updateGauge(kneeAngle);
+                
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(shoulder.x*w, shoulder.y*h);
+                canvasCtx.lineTo(hip.x*w, hip.y*h);
+                canvasCtx.lineTo(knee.x*w, knee.y*h);
+                canvasCtx.strokeStyle = "yellow"; canvasCtx.lineWidth = 5; canvasCtx.stroke();
+
+                let warning=""; let isKneeIn=false;
+                if(side==="RIGHT" && knee.x > ankle.x + KNEE_IN_THRESHOLD) isKneeIn=true;
+                if(side==="LEFT" && knee.x < ankle.x - KNEE_IN_THRESHOLD) isKneeIn=true;
+
+                if(isKneeIn && kneeAngle < 160) {
+                    if(metrics.isMoving && metrics.isClean) {
+                        warning="ひざを開いて！"; metrics.isClean=false; speak("ひざ"); playSound('error');
+                    }
+                }
+                if(hipAngle < BAD_POSTURE_ANGLE && kneeAngle < 160) {
+                    if(metrics.isMoving && metrics.isClean) {
+                        warning="胸を張って！"; metrics.isClean=false; speak("むね"); playSound('error');
+                    }
+                }
+                
+                if(warning) { els.warningMsg.innerText=warning; els.warningMsg.style.display='block'; }
+                else { els.warningMsg.style.display='none'; }
+
+                if(appState.isRunning) {
+                    if(kneeAngle < 165 && !metrics.isMoving) {
+                        metrics.isMoving=true; appState.repStart=Date.now(); metrics.minAngle=180;
+                        metrics.isDeep=false; metrics.isClean=true; hasSpokenGood=false;
+                    }
+                    if(metrics.isMoving) {
+                        if(kneeAngle < metrics.minAngle) metrics.minAngle = kneeAngle;
+                        if(kneeAngle < DEPTH_THRESHOLD) {
+                            metrics.isDeep=true;
+                            if(!hasSpokenGood && metrics.isClean) { hasSpokenGood=true; }
+                        }
+                        if(kneeAngle > RESET_ANGLE) {
+                            if(metrics.isDeep) {
+                                metrics.count++;
+                                const duration = (Date.now()-appState.repStart)/1000;
+                                if(appState.mode==='training') {
+                                    els.trReps.innerText=metrics.count; els.trSpeed.innerText=duration.toFixed(2);
+                                    if(metrics.isClean) speak("OK", true);
+                                } else {
+                                    let damage=0, isCrit=false;
+                                    if(metrics.isClean) {
+                                        metrics.combo++; if(metrics.combo>metrics.maxCombo) metrics.maxCombo=metrics.combo;
+                                        if(metrics.minAngle<100) { damage=150+metrics.combo*10; isCrit=true; }
+                                        else { damage=100+metrics.combo*5; }
+                                        updateScore(damage); showComboEffect(metrics.combo);
+                                    } else {
+                                        metrics.combo=0; damage=10; updateScore(10); speak("おしい");
+                                    }
+                                    damageEffect(damage, isCrit);
+                                    els.gmComboVal.innerText = metrics.combo;
+                                }
+                                metrics.logs.push({
+                                    id: appState.patientID, time: getNowStr(),
+                                    rep: metrics.count, depth: Math.floor(metrics.minAngle),
+                                    duration: parseFloat(duration.toFixed(2)), note: metrics.isClean?"Perfect":"Error"
+                                });
+                            }
+                            metrics.isMoving=false; metrics.isDeep=false;
+                        }
+                    }
+                }
+                if(metrics.isDeep) { els.statusLamp.innerText="OK!"; els.statusLamp.className="status-lamp lamp-ready"; }
+                else { els.statusLamp.innerText="しゃがむ"; els.statusLamp.className="status-lamp lamp-squat"; }
+            }
+        }
+
+        if(appState.subMode==='cs30' && appState.isRunning && !appState.isFinished) {
+            const elap = (Date.now()-appState.startTime)/1000;
+            let rem = 30-elap;
+            if(rem<=0) { rem=0; finishSession(); }
+            els.trTimer.innerText = Math.ceil(rem);
+        }
+        canvasCtx.restore();
+    }
+
+    const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+    pose.setOptions({modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+    pose.onResults(onResults);
 </script>
 </body>
 </html>
