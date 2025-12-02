@@ -151,7 +151,6 @@
             pointer-events: auto; overflow-y: auto; padding-top: 40px; padding-bottom: 40px;
         }
         
-        /* ★修正箇所：リザルト画面を初期状態で非表示にするCSSを追加 */
         #result-screen { display: none; padding: 20px; box-sizing: border-box; }
 
         /* 共通ボタンデザイン */
@@ -241,7 +240,7 @@
 
     <div id="start-screen" class="overlay-screen">
         <h1 style="color:#00e676; text-shadow:0 0 10px green; margin-bottom:10px;">SQUAT MASTER</h1>
-        <input type="text" id="patient-id" class="input-area" value="Player1" placeholder="IDを入力">
+        <input type="text" id="patient-id" class="input-area" value="User01" placeholder="IDを入力">
         
         <div id="main-menu" style="width:100%; display:flex; flex-direction:column; align-items:center;">
             <button class="big-btn btn-train" onclick="selectCategory('training')">
@@ -286,13 +285,15 @@
         </div>
 
         <button class="cloud-btn" id="cloud-btn" onclick="sendToGoogleSheets()">クラウドに保存 (DB)</button>
+        
         <button class="dl-btn" onclick="downloadCSV()">CSVで保存 (予備)</button>
         <button class="close-btn" onclick="location.reload()">タイトルへ</button>
     </div>
 
 <script>
-    // 1. 定数
+    // 1. 定数 (URLをアップロード頂いたファイルのものに更新)
     const GAS_URL = "https://script.google.com/macros/s/AKfycby1toVXJVJ1HyMxWxue5U3IN2NjFud8JAMm_ze2J3eFtL0jkgXoCf1HRm3g_wA7PDPa/exec";
+    
     const KNEE_IN_THRESHOLD = 0.04; 
     const BAD_POSTURE_ANGLE = 75;
     const RESET_ANGLE = 160;   
@@ -316,7 +317,7 @@
     // 3. UI Helper
     function getEl(id) { return document.getElementById(id); }
     
-    // 4. DOM Elements Cache
+    // 4. DOM Elements
     const videoElement = getEl('input_video');
     const canvasElement = getEl('output_canvas');
     const canvasCtx = canvasElement.getContext('2d');
@@ -330,11 +331,9 @@
         targetLabel: getEl('target-label'),
         pacerGhost: getEl('pacer-ghost'),
         pacerContainer: getEl('pacer-container'),
-        statusLamp: getEl('status-lamp'), // Not used in new UI but kept for ref
         warningMsg: getEl('warning-msg'),
         
         trReps: getEl('tr-reps'), trSpeed: getEl('tr-speed'), trTimer: getEl('tr-timer'),
-        // trPacerBox is removed in mobile UI simplified version
         
         gmScore: getEl('gm-score'), monster: getEl('monster'), hpBar: getEl('hp-bar'),
         hpText: getEl('hp-text'), monsterName: getEl('monster-name'),
@@ -455,6 +454,7 @@
         appState.patientID = getEl('patient-id').value || "Guest";
         els.startScreen.style.display = 'none';
         
+        // Mode Init
         if(appState.mode === 'training') {
             els.uiTraining.style.display = 'block';
             els.uiGame.style.display = 'none';
@@ -562,52 +562,33 @@
         new Chart(getEl('depthChart'), {type:'bar', data:{labels:lbls, datasets:[{label:'深さ', data:dpts, backgroundColor:clrs}]}, options:{scales:{y:{reverse:true, min:60, max:180}}, plugins:{legend:{display:false}}}});
     }
 
+    // ★修正: Summary/Details 対応の送信ロジック
     function sendToGoogleSheets() {
-        if(dataLogs.length === 0) {
-            alert("送信するデータがありません");
-            return;
-        }
-        const btn = document.getElementById('cloud-btn');
-        const originalText = btn.innerText;
-        btn.innerText = "送信中...";
-        btn.disabled = true;
-
-        // セッションIDの発行（現在時刻のミリ秒などを使ってユニークにする）
-        const sessionID = patientID + "_" + Date.now();
+        if(metrics.logs.length===0){alert("データなし");return;}
+        const btn=getEl('cloud-btn'); btn.innerText="送信中..."; btn.disabled=true;
         
-        // 疲労指数の取得
-        const fatigueText = document.getElementById('res-fatigue').innerText;
-
-        // 送信データのパッケージング
+        const sessionID = appState.patientID + "_" + Date.now();
+        const fatigue = getEl('res-fatigue').innerText;
+        
         const payload = {
             sessionID: sessionID,
             summary: {
-                patientID: patientID,
+                patientID: appState.patientID,
                 date: getNowStr(),
-                mode: appState.mode + "_" + appState.subMode, // トレーニングモード等
+                mode: appState.mode + "_" + appState.subMode,
                 reps: metrics.count,
                 score: metrics.score,
                 maxCombo: metrics.maxCombo,
-                fatigue: fatigueText
+                fatigue: fatigue
             },
-            logs: dataLogs // 詳細データの配列
+            logs: metrics.logs
         };
 
-        fetch(GAS_URL, {
-            method: 'POST',
-            body: JSON.stringify(payload),
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-        })
-        .then(response => {
-            alert("クラウドへの保存が完了しました！\n(SummaryとDetailsに分かれて保存されました)");
-            btn.innerText = "送信完了";
-        })
-        .catch(error => {
-            alert("送信エラー: " + error);
-            btn.innerText = originalText;
-            btn.disabled = false;
-        });
+        fetch(GAS_URL, {method:'POST', body:JSON.stringify(payload), headers:{"Content-Type":"text/plain"}})
+        .then(()=>{alert("完了"); btn.innerText="送信完了";})
+        .catch(e=>{alert("エラー: " + e); btn.disabled=false;});
     }
+
     function downloadCSV() {
         let c = "ID,Time,Rep,Depth,Duration,Note\n";
         metrics.logs.forEach(r => c += `${r.id},${r.time},${r.rep},${r.depth},${r.duration},${r.note}\n`);
