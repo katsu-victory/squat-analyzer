@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Squat Master Mobile</title>
+    <title>Squat Master v9.1 (Fixed)</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="SquatMaster">
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
@@ -19,169 +18,108 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
     <style>
-        /* スマホ用リセット & フォント */
-        body { 
-            margin: 0; padding: 0; background-color: #121212; 
-            font-family: "Hiragino Kaku Gothic ProN", sans-serif; 
-            overflow: hidden; touch-action: none; 
-        }
-        
-        .container { 
-            position: relative; width: 100vw; height: 100dvh; 
-            padding-bottom: env(safe-area-inset-bottom);
-        }
-        
-        #input_video { 
-            position: absolute; width: 100%; height: 100%; 
-            object-fit: cover; transform: scaleX(-1); z-index: 0;
-        }
-        #output_canvas { 
-            position: absolute; width: 100%; height: 100%; 
-            object-fit: cover; transform: scaleX(-1); z-index: 1;
-        }
-        
+        /* Base */
+        body { margin: 0; padding: 0; background-color: #121212; font-family: "Hiragino Kaku Gothic ProN", sans-serif; overflow: hidden; touch-action: manipulation; }
+        .container { position: relative; width: 100vw; height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
+        #input_video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: 0; }
+        #output_canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: 1; }
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
 
-        /* === 左サイド: ゲージ & 情報パネル === */
-        #depth-gauge-container {
-            position: absolute; left: 15px; top: 25%; bottom: 25%; width: 30px;
-            background: rgba(0, 0, 0, 0.5); border-radius: 15px; border: 2px solid #fff; 
-            display: none;
-        }
+        /* === 共通パーツ === */
+        .control-area { position: absolute; bottom: 30px; left: 0; width: 100%; text-align: center; pointer-events: auto; }
+        .finish-btn { background: linear-gradient(45deg, #f44336, #ff9800); color: white; border: none; padding: 15px 60px; font-size: 22px; border-radius: 50px; font-weight: bold; box-shadow: 0 5px 20px rgba(0,0,0,0.6); cursor: pointer; }
+        .warning-text { position: absolute; top: 55%; left: 50%; transform: translateX(-50%); font-size: 24px; font-weight: bold; color: #ff1744; background: rgba(255,255,255,0.95); padding: 10px 20px; border-radius: 10px; border: 3px solid red; display: none; width: 80%; text-align: center; z-index: 50; }
+        .status-lamp { position: absolute; bottom: 100px; right: 20px; padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold; color: white; text-align: center; width: 80px; }
+        .lamp-ready { background-color: #00e676; box-shadow: 0 0 15px #00e676; }
+        .lamp-squat { background-color: #555; }
+
+        /* === スクワット用UI === */
+        #squat-ui { display: none; }
+        #depth-gauge-container { position: absolute; left: 15px; top: 25%; bottom: 25%; width: 30px; background: rgba(0,0,0,0.5); border-radius: 15px; border: 2px solid #fff; }
         #depth-bar { position: absolute; top: 0; left: 0; width: 100%; height: 0%; background: #00bcd4; transition: height 0.05s linear; }
         #target-line { position: absolute; left: 0; width: 100%; height: 4px; background: #ff4081; z-index: 5; }
-        #target-label { position: absolute; left: 55px; color: #ff4081; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 0 black; display: none; }
+        #target-label { position: absolute; left: 55px; color: #ff4081; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 0 black; }
+        #pacer-container { position: absolute; right: 15px; top: 25%; bottom: 25%; width: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; }
+        #pacer-ghost { position: absolute; left: -16px; width: 40px; height: 40px; background: #2979ff; border: 3px solid white; border-radius: 50%; top: 100%; box-shadow: 0 0 15px #2979ff; }
         
-        .info-panel {
-            position: absolute; top: 15px; left: 15px;
-            background: rgba(0, 0, 0, 0.6); padding: 10px; border-radius: 10px;
-            color: white; width: 110px; border: 1px solid #777;
-        }
+        /* トレーニングモード用 */
+        #training-info { display: none; }
+        .info-panel { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 10px; color: white; width: 110px; border: 1px solid #777; pointer-events: auto; }
         .info-label { font-size: 11px; color: #ccc; }
         .info-val { font-size: 32px; font-weight: bold; line-height:1.0; }
-
-        /* === 右サイド: ペーサー & タイマー/スコア === */
-        #pacer-container {
-            position: absolute; right: 15px; top: 25%; bottom: 25%; width: 8px;
-            background: rgba(255, 255, 255, 0.2); border-radius: 4px; 
-            display: none;
-        }
-        #pacer-ghost {
-            position: absolute; left: -16px; width: 40px; height: 40px;
-            background: #2979ff; border: 3px solid white; border-radius: 50%; top: 100%;
-            box-shadow: 0 0 15px #2979ff;
-        }
-
-        .timer-box {
-            position: absolute; top: 15px; right: 15px; background: #000; color: #00e676;
-            padding: 5px 15px; border-radius: 8px; font-size: 28px; font-weight: bold; border: 2px solid #00e676;
-            display: none;
-        }
+        .timer-box { position: absolute; top: 15px; right: 15px; background: #000; color: #00e676; padding: 5px 15px; border-radius: 8px; font-size: 28px; font-weight: bold; border: 2px solid #00e676; display: none; }
+        .pacer-counter { position: absolute; bottom: 120px; right: 60px; background: rgba(41, 121, 255, 0.8); padding: 5px 10px; border-radius: 8px; color: white; text-align: center; display: none; width: 80px; font-size: 12px; }
         
-        /* ゲームUI */
-        .score-board {
-            position: absolute; top: 15px; right: 15px;
-            text-align: right; width: auto;
-        }
-        .score-label { font-size: 12px; color: #ffd700; font-weight: bold; text-shadow: 1px 1px 0 #000; display: block; }
-        .score-val { 
-            font-size: 42px; font-weight: 900; color: #fff; 
-            text-shadow: 0 0 10px #ffd700, 2px 2px 0 #000; font-style: italic; line-height: 1.0;
-        }
-
-        #battle-stage {
-            position: absolute; top: 20%; left: 50%; transform: translateX(-50%);
-            width: 250px; text-align: center;
-        }
-        #monster-name {
-            background: rgba(0,0,0,0.6); padding: 2px 10px; border-radius: 10px; 
-            color: #00e676; font-weight: bold; font-size: 12px; display: inline-block; margin-bottom: 5px;
-            border: 1px solid #00e676;
-        }
-        #monster { font-size: 80px; filter: drop-shadow(0 0 10px red); transition: transform 0.1s; display:inline-block; }
-        
-        .hp-container {
-            width: 100%; height: 18px; background: #333; border: 2px solid white; border-radius: 10px;
-            margin-top: 5px; overflow: hidden; position: relative;
-        }
+        /* ゲームモード用 */
+        #game-info { display: none; }
+        .game-header-L { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 10px; color: white; border: 1px solid #ffd700; }
+        .game-header-R { position: absolute; top: 15px; right: 15px; text-align: right; }
+        .score-label { font-size: 12px; color: #ffd700; font-weight: bold; display: block; }
+        .score-val { font-size: 42px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #ffd700, 2px 2px 0 #000; font-style: italic; line-height: 1.0; }
+        #battle-stage { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); width: 250px; text-align: center; }
+        #monster-name { background: rgba(0,0,0,0.6); padding: 2px 10px; border-radius: 10px; color: #00e676; font-weight: bold; font-size: 12px; display: inline-block; margin-bottom: 5px; border: 1px solid #00e676; }
+        #monster { font-size: 100px; filter: drop-shadow(0 0 10px red); transition: transform 0.1s; display:inline-block; }
+        .hp-container { width: 100%; height: 18px; background: #333; border: 2px solid white; border-radius: 10px; margin-top: 5px; overflow: hidden; position: relative; }
         #hp-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #ff1744, #ff4081); transition: width 0.3s; }
-        #hp-text {
-            position: absolute; top: 0; left: 0; width: 100%; text-align: center;
-            font-size: 12px; font-weight: bold; color: white; line-height: 18px; text-shadow: 1px 1px 0 #000;
-        }
-
-        /* 警告 & ステータス */
-        .warning-text {
-            position: absolute; top: 55%; left: 50%; transform: translateX(-50%);
-            font-size: 24px; font-weight: bold; color: #ff1744; 
-            background: rgba(255, 255, 255, 0.95); padding: 10px 20px; border-radius: 10px; 
-            border: 3px solid red; display: none; width: 80%; text-align: center;
-        }
-        
-        .control-area {
-            position: absolute; bottom: 10%; left: 0; width: 100%; text-align: center; pointer-events: auto;
-        }
-        .finish-btn {
-            background: linear-gradient(45deg, #f44336, #ff9800); color: white; border: none;
-            padding: 15px 60px; font-size: 22px; border-radius: 50px; font-weight: bold;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5); cursor: pointer;
-        }
-
-        #combo-display {
-            position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-5deg);
-            font-size: 60px; font-weight: 900; color: #ffeb3b; 
-            text-shadow: 3px 3px 0 #f57f17, -1px -1px 0 white;
-            font-style: italic; pointer-events: none; opacity: 0;
-            transition: transform 0.1s, opacity 0.3s; z-index: 20;
-        }
+        #hp-text { position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 12px; font-weight: bold; color: white; line-height: 18px; text-shadow: 1px 1px 0 #000; }
+        .damage-shake { animation: shake 0.3s; }
+        @keyframes shake { 0% {transform: rotate(0deg);} 25% {transform: rotate(10deg);} 75% {transform: rotate(-10deg);} 100% {transform: rotate(0deg);} }
+        #combo-display { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-5deg); font-size: 60px; font-weight: 900; color: #ffeb3b; text-shadow: 3px 3px 0 #f57f17, -1px -1px 0 white; font-style: italic; pointer-events: none; opacity: 0; transition: transform 0.1s, opacity 0.3s; z-index: 20; }
         .combo-active { opacity: 1 !important; transform: translate(-50%, -50%) rotate(-5deg) scale(1.3) !important; }
 
-        /* オーバーレイ */
-        #countdown-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7); z-index: 15; display: none;
-            justify-content: center; align-items: center;
-        }
+        /* === バランス用UI === */
+        #balance-ui { display: none; }
+        .balance-timer-main { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); font-size: 80px; font-weight: 900; color: #fff; text-shadow: 0 0 20px #00bcd4; text-align: center; }
+        .balance-msg { font-size: 24px; color: #00e676; margin-top: 10px; }
+
+        /* === バンザイ用UI === */
+        #banzai-ui { display: none; }
+        .banzai-gauge { position: absolute; bottom: 20%; width: 40px; height: 40%; background: rgba(50, 50, 50, 0.6); border: 2px solid #fff; border-radius: 20px; overflow: hidden; }
+        #banzai-gauge-L { left: 20px; }
+        #banzai-gauge-R { right: 20px; }
+        .banzai-bar { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; transition: height 0.1s; }
+        #banzai-bar-L { background: #ff4081; }
+        #banzai-bar-R { background: #2979ff; }
+        .banzai-text { position: absolute; bottom: 14%; font-size: 28px; font-weight: bold; color: white; text-shadow: 1px 1px 0 black; }
+        #bz-angle-l { left: 20px; color: #ff4081; }
+        #bz-angle-r { right: 20px; color: #2979ff; }
+        .banzai-guide-text { position: absolute; top: 15%; width: 100%; text-align: center; font-size: 20px; color: #aaa; }
+
+        /* Overlays */
+        .overlay-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #222; z-index: 20; display: flex; flex-direction: column; align-items: center; color: white; pointer-events: auto; overflow-y: auto; padding-top: 40px; padding-bottom: 60px; }
+        #countdown-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 15; display: none; justify-content: center; align-items: center; }
         .countdown-text { font-size: 100px; font-weight: bold; color: white; text-shadow: 0 0 30px cyan; text-align: center;}
 
-        /* スタート・リザルト画面 */
-        .overlay-screen {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: #222; z-index: 20; display: flex; flex-direction: column; align-items: center; color: white;
-            pointer-events: auto; overflow-y: auto; padding-top: 40px; padding-bottom: 40px;
-        }
-        
-        #result-screen { display: none; padding: 20px; box-sizing: border-box; }
+        /* Survey */
+        #survey-screen { display: none; }
+        .survey-card { background: #333; padding: 20px; border-radius: 15px; width: 90%; max-width: 400px; margin-bottom: 20px; text-align: center; border: 1px solid #444; }
+        .survey-label { font-size: 18px; font-weight: bold; margin-bottom: 15px; display: block; color:#00e676; }
+        input[type=range] { width: 100%; margin: 15px 0; }
+        .rpe-scale { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; }
+        .rpe-val { font-size: 40px; font-weight: bold; color: #fff; }
+        .pain-btn { background: #444; border: 1px solid #777; color: #fff; padding: 12px 20px; margin: 5px; border-radius: 20px; font-size: 16px; min-width: 70px; }
+        .pain-btn.active { background: #ff1744; border-color: red; font-weight: bold; }
+        button.survey-done-btn { background: #2979ff; color: white; padding: 15px 50px; border-radius: 30px; border:none; font-size: 20px; font-weight: bold; margin-top: 20px; }
 
-        /* 共通ボタンデザイン */
-        .big-btn {
-            width: 85%; padding: 25px; margin: 15px; border-radius: 15px; border: none;
-            font-size: 24px; font-weight: bold; color: white; cursor: pointer; text-align: center;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5); transition: transform 0.1s;
-        }
-        .btn-train { background: linear-gradient(135deg, #00c853, #64dd17); }
-        .btn-game { background: linear-gradient(135deg, #2979ff, #00e5ff); }
-        
-        .sub-btn {
-            width: 80%; padding: 15px; margin: 8px; border-radius: 10px; border: 2px solid #555;
-            font-size: 18px; color: white; background: #333; cursor: pointer;
-        }
-        .sub-btn.selected { border-color: #00e676; background: #003300; }
-
-        .input-area { padding: 15px; font-size: 20px; text-align: center; border-radius: 8px; width: 70%; margin-bottom: 20px;}
-
-        /* リザルト用 */
-        .stat-card { background: #333; padding: 10px; border-radius: 10px; width: 45%; text-align: center; margin-bottom: 5px;}
+        /* Result */
+        #result-screen { display: none; }
+        .stat-card { background: #333; padding: 10px; border-radius: 10px; width: 45%; text-align: center; margin-bottom: 5px; }
         .stat-val { font-size: 28px; font-weight: bold; }
         .chart-box { width: 95%; max-width: 400px; height: 180px; background: white; border-radius: 8px; margin-bottom: 10px; }
+
+        /* Buttons */
+        .big-btn { width: 85%; padding: 25px; margin: 15px; border-radius: 15px; border: none; font-size: 24px; font-weight: bold; color: white; cursor: pointer; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.5); transition: transform 0.1s; }
+        .btn-squat { background: linear-gradient(135deg, #00c853, #64dd17); }
+        .btn-measure { background: linear-gradient(135deg, #2979ff, #00e5ff); }
+        
+        .sub-btn { width: 80%; padding: 15px; margin: 8px; border-radius: 10px; border: 2px solid #555; font-size: 18px; color: white; background: #333; cursor: pointer; }
+        .sub-btn.selected { border-color: #00e676; background: #003300; }
+        .input-area { padding: 15px; font-size: 20px; text-align: center; border-radius: 8px; width: 70%; margin-bottom: 20px;}
         
         button.start-btn { background: #00e676; color: #003300; font-weight: bold; margin-top: 20px; padding: 15px; width: 80%; border:none; border-radius: 30px; font-size: 20px;}
         button.cloud-btn { background: #2962ff; color: white; width: 90%; padding: 15px; border-radius:30px; border:none; font-weight:bold; margin-top:10px;}
         button.dl-btn { background: #555; color: white; margin-top: 10px; font-size: 14px; padding: 10px; border-radius: 5px; border:none;}
         button.close-btn { background: #333; color: #aaa; margin-top: 30px; padding: 15px; font-size: 16px; border: 1px solid #555;}
-        
-        .damage-shake { animation: shake 0.3s; }
-        @keyframes shake { 0% {transform: rotate(0deg);} 25% {transform: rotate(10deg);} 75% {transform: rotate(-10deg);} 100% {transform: rotate(0deg);} }
     </style>
 </head>
 <body>
@@ -189,52 +127,63 @@
     <div class="container">
         <video id="input_video" playsinline></video>
         <canvas id="output_canvas"></canvas>
-        
         <div id="countdown-overlay"><div class="countdown-text" id="countdown-val">5</div></div>
 
         <div class="ui-layer">
-            <div id="depth-gauge-container"><div id="depth-bar"></div><div id="target-line"></div></div>
-            <div id="target-label">目標ライン</div>
-            <div id="pacer-container"><div id="pacer-ghost"></div></div>
+            <div id="squat-ui">
+                <div id="depth-gauge-container"><div id="depth-bar"></div><div id="target-line"></div></div>
+                <div id="target-label">目標</div>
+                <div id="pacer-container"><div id="pacer-ghost"></div></div>
 
-            <div id="training-ui">
-                <div class="info-panel">
-                    <div class="info-label">回数</div><div class="info-val" id="tr-reps">0</div>
-                    <div style="height:5px;"></div>
-                    <div class="info-label">秒数</div><div class="info-val" id="tr-speed">0.0</div>
-                </div>
-                <div class="timer-box" id="tr-timer">30</div>
-            </div>
-
-            <div id="game-ui">
-                <div class="info-panel">
-                    <div class="info-label">LEVEL</div><div class="info-val" id="gm-lvl-val">1</div>
-                    <div style="height:5px;"></div>
-                    <div class="info-label">COMBO</div><div class="info-val" id="gm-combo-val">0</div>
-                </div>
-
-                <div class="score-board">
-                    <div class="score-label">SCORE</div>
-                    <div class="score-val" id="gm-score">0</div>
-                </div>
-
-                <div id="battle-stage">
-                    <div id="monster-name">Lv.1 スライム</div><br>
-                    <div id="monster">👾</div>
-                    <div class="hp-container">
-                        <div id="hp-bar"></div>
-                        <div id="hp-text">100/100</div>
+                <div id="training-info">
+                    <div class="info-panel">
+                        <div class="info-label">回数</div><div class="info-val" id="tr-reps">0</div>
+                        <div style="height:5px;"></div>
+                        <div class="info-label">秒数</div><div class="info-val" id="tr-speed">0.0</div>
+                    </div>
+                    <div class="timer-box" id="tr-timer">30</div>
+                    <div class="pacer-counter" id="tr-pacer-box">
+                        <div style="font-size:10px; color:#ccc;">ペース</div><div style="font-size:24px; font-weight:bold;" id="tr-pacer-val">0</div>
                     </div>
                 </div>
-                
-                <div id="combo-display"></div>
+
+                <div id="game-info">
+                    <div class="game-header-L">
+                        <div style="font-size:12px; color:#ccc;">LEVEL</div><div style="font-size:20px; font-weight:bold;" id="gm-lvl-val">1</div>
+                        <div style="height:5px;"></div>
+                        <div style="font-size:12px; color:#ccc;">COMBO</div><div style="font-size:24px; font-weight:bold; color:#ffeb3b;" id="gm-combo-val">0</div>
+                    </div>
+                    <div class="game-header-R">
+                        <div class="score-label">SCORE</div><div class="score-val" id="gm-score">0</div>
+                    </div>
+                    <div id="battle-stage">
+                        <div id="monster-name">Lv.1 スライム</div><br>
+                        <div id="monster">👾</div>
+                        <div class="hp-container"><div id="hp-bar"></div><div id="hp-text">100/100</div></div>
+                    </div>
+                    <div id="combo-display"></div>
+                </div>
+            </div>
+
+            <div id="balance-ui">
+                <div class="balance-timer-main" id="bal-timer">0.00</div>
+                <div class="balance-timer-main" style="font-size:20px; top:35%;" id="bal-status">両足着地中...</div>
+                <div class="info-panel" style="top:auto; bottom:150px;">
+                    <div class="info-label">ベスト記録</div><div class="info-val" id="bal-best">0.0</div>
+                </div>
+            </div>
+
+            <div id="banzai-ui">
+                <div class="banzai-guide-text">正面を向いてバンザイ！</div>
+                <div class="banzai-gauge" id="banzai-gauge-L"><div class="banzai-bar" id="banzai-bar-L"></div></div>
+                <div class="banzai-text" id="bz-angle-l">0°</div>
+                <div class="banzai-gauge" id="banzai-gauge-R"><div class="banzai-bar" id="banzai-bar-R"></div></div>
+                <div class="banzai-text" id="bz-angle-r">0°</div>
             </div>
 
             <div class="warning-text" id="warning-msg"></div>
-            
-            <div class="control-area">
-                <button class="finish-btn" onclick="finishSession()">終了</button>
-            </div>
+            <div class="status-lamp lamp-squat" id="status-lamp">待機</div>
+            <div class="control-area"><button class="finish-btn" onclick="finishSession()">終了</button></div>
         </div>
     </div>
 
@@ -243,56 +192,84 @@
         <input type="text" id="patient-id" class="input-area" value="User01" placeholder="IDを入力">
         
         <div id="main-menu" style="width:100%; display:flex; flex-direction:column; align-items:center;">
-            <button class="big-btn btn-train" onclick="selectCategory('training')">
-                <div>🏋️ トレーニング</div>
-                <div style="font-size:14px; font-weight:normal; margin-top:5px;">スロトレ / セルフ / CS-30</div>
+            <button class="big-btn btn-squat" onclick="selectCategory('squat')">
+                <div>🏋️ スクワット</div><div style="font-size:14px; font-weight:normal; margin-top:5px;">スロトレ・セルフ・ゲーム</div>
             </button>
-            <button class="big-btn btn-game" onclick="selectCategory('game')">
-                <div>⚔️ ゲームモード</div>
-                <div style="font-size:14px; font-weight:normal; margin-top:5px;">モンスターを倒してスコアを競う</div>
+            <button class="big-btn btn-measure" onclick="selectCategory('measure')">
+                <div>📊 測定 (テスト)</div><div style="font-size:14px; font-weight:normal; margin-top:5px;">CS-30・バランス・バンザイ</div>
             </button>
         </div>
 
-        <div id="train-menu" style="display:none; width:100%; flex-direction:column; align-items:center;">
-            <h3 style="color:#ccc;">メニューを選択</h3>
-            <button class="sub-btn selected" id="opt-slow" onclick="setTrainMode('slow')">🐢 スロートレーニング (7秒)</button>
-            <button class="sub-btn" id="opt-self" onclick="setTrainMode('self')">🙂 セルフペース</button>
-            <button class="sub-btn" id="opt-cs30" onclick="setTrainMode('cs30')">⏱ CS-30 テスト</button>
+        <div id="squat-menu" style="display:none; width:100%; flex-direction:column; align-items:center;">
+            <h3 style="color:#ccc;">スクワット (トレーニング)</h3>
+            <button class="sub-btn selected" id="opt-slow" onclick="setSquatMode('slow')">🐢 スロトレ (7秒)</button>
+            <button class="sub-btn" id="opt-self" onclick="setSquatMode('self')">🙂 セルフペース</button>
+            <button class="sub-btn" id="opt-game" onclick="setSquatMode('game')">⚔️ ゲームモード</button>
             
-            <button class="start-btn" onclick="startApp()">測定スタート</button>
+            <button class="start-btn" onclick="startApp()">スタート</button>
             <button onclick="backToMain()" style="background:transparent; border:none; color:#aaa; margin-top:20px;">戻る</button>
         </div>
+        
+        <div id="measure-menu" style="display:none; width:100%; flex-direction:column; align-items:center;">
+            <h3 style="color:#ccc;">測定 (テスト)</h3>
+            <button class="sub-btn" id="opt-cs30" onclick="setMode('squat', 'cs30')">⏱ CS-30 (30秒立ち座り)</button>
+            <button class="sub-btn" id="opt-balance" onclick="setMode('balance', 'normal')">🦩 片足立ちテスト</button>
+            <button class="sub-btn" id="opt-banzai" onclick="setMode('banzai', 'normal')">🙆 バンザイ (可動域)</button>
+            
+            <button class="start-btn" onclick="startApp()">スタート</button>
+            <button onclick="backToMain()" style="background:transparent; border:none; color:#aaa; margin-top:20px;">戻る</button>
+        </div>
+    </div>
+
+    <div id="survey-screen" class="overlay-screen">
+        <h2 style="color:#00e676;">お疲れ様でした！</h2>
+        <div class="survey-card">
+            <span class="survey-label">Q1. きつさは？ (0〜10)</span>
+            <div class="rpe-val" id="rpe-val">3</div>
+            <input type="range" id="rpe-slider" min="0" max="10" value="3" oninput="updateRPE(this.value)">
+            <div class="rpe-scale"><span>楽</span><span>普通</span><span>きつい</span></div>
+        </div>
+        <div class="survey-card">
+            <span class="survey-label">Q2. 痛みはありますか？</span>
+            <button class="pain-btn active" onclick="setPain('None', this)">なし</button>
+            <button class="pain-btn" onclick="setPain('Knee', this)">膝</button>
+            <button class="pain-btn" onclick="setPain('Back', this)">腰</button>
+            <button class="pain-btn" onclick="setPain('Other', this)">他</button>
+        </div>
+        <button class="survey-done-btn" onclick="submitSurvey()">結果を見る</button>
     </div>
 
     <div id="result-screen" class="overlay-screen">
         <h2 style="color:white; border-bottom:2px solid #00e676;">RESULT</h2>
         
-        <div id="game-result-area" style="display:none; text-align:center; margin-bottom:10px;">
-            <div style="font-size:60px; font-weight:900; color:#ffd700;" id="res-rank">S</div>
-            <div style="color:#ffeb3b; font-size:24px;">SCORE: <span id="res-score-final">0</span></div>
+        <div id="res-squat-area">
+            <div id="game-result-area" style="display:none; text-align:center; margin-bottom:10px;">
+                <div style="font-size:60px; font-weight:900; color:#ffd700;" id="res-rank">S</div>
+                <div style="color:#ffeb3b; font-size:24px;">SCORE: <span id="res-score-final">0</span></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; width:95%; max-width:400px;">
+                <div class="stat-card"><div style="font-size:12px;">回数</div><div class="stat-val" id="res-reps">0</div></div>
+                <div class="stat-card"><div style="font-size:12px;">疲労指数</div><div class="stat-val" id="res-fatigue">--</div></div>
+            </div>
+            <div style="width:100%; max-width:400px; margin-top:10px;">
+                <div class="chart-box"><canvas id="speedChart"></canvas></div>
+                <div class="chart-box"><canvas id="depthChart"></canvas></div>
+            </div>
         </div>
 
-        <div style="display:flex; justify-content:space-between; width:95%; max-width:400px;">
-            <div class="stat-card"><div style="font-size:12px;">回数</div><div class="stat-val" id="res-reps">0</div></div>
-            <div class="stat-card"><div style="font-size:12px;">疲労指数</div><div class="stat-val" id="res-fatigue">--</div></div>
-        </div>
-
-        <div style="width:100%; max-width:400px; margin-top:10px;">
-            <div style="font-size:12px; color:#aaa;">▼ スピード推移</div>
-            <div class="chart-box"><canvas id="speedChart"></canvas></div>
-            <div style="font-size:12px; color:#aaa;">▼ 深さとエラー</div>
-            <div class="chart-box"><canvas id="depthChart"></canvas></div>
+        <div id="res-simple-area" style="display:none; text-align:center; width:100%;">
+            <div style="font-size:20px; color:#aaa;" id="res-simple-label">記録</div>
+            <div style="font-size:50px; font-weight:bold; color:#00e676;" id="res-simple-val">0</div>
         </div>
 
         <button class="cloud-btn" id="cloud-btn" onclick="sendToGoogleSheets()">クラウドに保存 (DB)</button>
-        
-        <button class="dl-btn" onclick="downloadCSV()">CSVで保存 (予備)</button>
+        <button class="dl-btn" onclick="downloadCSV()">CSVで保存</button>
         <button class="close-btn" onclick="location.reload()">タイトルへ</button>
     </div>
 
 <script>
-    // 1. 定数 (URLをアップロード頂いたファイルのものに更新)
-    const GAS_URL = "https://script.google.com/macros/s/AKfycby1toVXJVJ1HyMxWxue5U3IN2NjFud8JAMm_ze2J3eFtL0jkgXoCf1HRm3g_wA7PDPa/exec";
+    // URLはご自身のものに書き換えてください
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbyKqUnAi2JcfbQCzeI4498mTYEXFDCo1itE9pdnOQB9JJfyFHGvM4Z2SpkZsMjGRPsk/exec";
     
     const KNEE_IN_THRESHOLD = 0.04; 
     const BAD_POSTURE_ANGLE = 75;
@@ -302,423 +279,359 @@
     const SLOW_CYCLE_MS = 7000;
     const MONSTERS = [["👾", 300], ["🦇", 500], ["👻", 800], ["👹", 1200], ["🐲", 2000]];
 
-    // 2. 変数
-    let appState = {
-        mode: "", subMode: "", isRunning: false, isFinished: false, isCameraReady: false,
-        startTime: null, repStart: 0, patientID: "Guest"
-    };
+    let appState = { exercise: "", subMode: "", isRunning: false, isFinished: false, isCameraReady: false, startTime: null, repStart: 0, patientID: "Guest" };
     let metrics = {
         count: 0, minAngle: 180, isDeep: false, isMoving: false, isClean: true,
-        score: 0, combo: 0, maxCombo: 0, monsterLevel: 0, monsterHP: 0, defeated: 0, logs: []
+        score: 0, combo: 0, maxCombo: 0, monsterLevel: 0, monsterHP: 0, defeated: 0, logs: [],
+        isBalancing: false, balanceStart: 0, currentBalanceTime: 0, maxBalanceTime: 0,
+        maxAngleL: 0, maxAngleR: 0
     };
+    let surveyData = { rpe: 3, pain: "None" };
     let audioCtx = null;
     let lastSpeechTime = 0; 
 
-    // 3. UI Helper
     function getEl(id) { return document.getElementById(id); }
-    
-    // 4. DOM Elements
     const videoElement = getEl('input_video');
     const canvasElement = getEl('output_canvas');
     const canvasCtx = canvasElement.getContext('2d');
     
+    // ★ 修正: 不足していたDOM要素をelsに追加
     const els = {
-        uiTraining: getEl('training-ui'),
-        uiGame: getEl('game-ui'),
-        depthGaugeContainer: getEl('depth-gauge-container'),
-        depthBar: getEl('depth-bar'),
-        targetLine: getEl('target-line'),
-        targetLabel: getEl('target-label'),
-        pacerGhost: getEl('pacer-ghost'),
-        pacerContainer: getEl('pacer-container'),
-        warningMsg: getEl('warning-msg'),
+        uiSquat: getEl('squat-ui'), uiBalance: getEl('balance-ui'), uiBanzai: getEl('banzai-ui'),
+        uiTraining: getEl('training-info'), uiGame: getEl('game-info'),
         
-        trReps: getEl('tr-reps'), trSpeed: getEl('tr-speed'), trTimer: getEl('tr-timer'),
+        depthGaugeContainer: getEl('depth-gauge-container'), // 追加
+        depthBar: getEl('depth-bar'), targetLine: getEl('target-line'), targetLabel: getEl('target-label'),
+        pacerGhost: getEl('pacer-ghost'), pacerContainer: getEl('pacer-container'),
+        trReps: getEl('tr-reps'), trSpeed: getEl('tr-speed'), trTimer: getEl('tr-timer'), trPacerBox: getEl('tr-pacer-box'), trPacerVal: getEl('tr-pacer-val'),
         
-        gmScore: getEl('gm-score'), monster: getEl('monster'), hpBar: getEl('hp-bar'),
-        hpText: getEl('hp-text'), monsterName: getEl('monster-name'),
+        gmScoreBoard: getEl('gm-score-board'), gmScore: getEl('gm-score'), comboDisp: getEl('combo-display'),
+        battleStage: getEl('battle-stage'), monster: getEl('monster'), monsterName: getEl('monster-name'), hpBar: getEl('hp-bar'), hpText: getEl('hp-text'),
         gmComboVal: getEl('gm-combo-val'), gmLvlVal: getEl('gm-lvl-val'),
-        comboDisp: getEl('combo-display'),
         
+        balTimer: getEl('bal-timer'), balStatus: getEl('bal-status'), balBest: getEl('bal-best'),
+        bzAngleL: getEl('bz-angle-l'), bzAngleR: getEl('bz-angle-r'), bzBarL: getEl('banzai-bar-L'), bzBarR: getEl('banzai-bar-R'),
+        
+        statusLamp: getEl('status-lamp'), warningMsg: getEl('warning-msg'),
         countOverlay: getEl('countdown-overlay'), countVal: getEl('countdown-val'),
-        startScreen: getEl('start-screen'), resScreen: getEl('result-screen')
+        startScreen: getEl('start-screen'), surveyScreen: getEl('survey-screen'), resScreen: getEl('result-screen'),
+        genericMenu: getEl('generic-menu'), squatMenu: getEl('squat-menu'), measureMenu: getEl('measure-menu'), mainMenu: getEl('main-menu')
     };
 
-    // 5. Audio & Helpers
-    function initAudio() {
-        if(!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-        if(audioCtx.state === 'suspended') audioCtx.resume();
-    }
-    function playTone(freq, type, dur) {
-        if(!audioCtx) return;
-        const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
-        o.type=type; o.frequency.value=freq; g.gain.value=0.1;
-        o.connect(g); g.connect(audioCtx.destination);
-        o.start(); o.stop(audioCtx.currentTime+dur);
-    }
+    function initAudio() { if(!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } if(audioCtx.state === 'suspended') audioCtx.resume(); }
+    function playTone(freq, type, dur) { if(!audioCtx) return; const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type=type; o.frequency.value=freq; g.gain.value=0.1; o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+dur); }
     function playSound(type) {
         if(!audioCtx) return;
-        if(type==='hit') { playTone(400,'square',0.1); setTimeout(()=>playTone(600,'square',0.1),50); }
-        if(type==='crit') { playTone(880,'sine',0.1); setTimeout(()=>playTone(1760,'sine',0.2),50); }
-        if(type==='win') { playTone(523,'triangle',0.2); setTimeout(()=>playTone(659,'triangle',0.1),100); setTimeout(()=>playTone(784,'triangle',0.4),200); }
-        if(type==='error') playTone(150,'sawtooth',0.3);
         if(type==='count') playTone(600,'square',0.05);
         if(type==='start') { playTone(600,'square',0.1); setTimeout(()=>playTone(1200,'square',0.1),100); }
-        if(type==='combo') {
-            let base = 440 + (metrics.combo * 50); if(base>1200)base=1200;
-            playTone(base,'triangle',0.1);
-        }
+        if(type==='ok') { playTone(880,'sine',0.1); setTimeout(()=>playTone(1760,'sine',0.1),50); }
+        if(type==='ng') playTone(150,'sawtooth',0.3);
+        if(type==='crit') { playTone(880,'sine',0.1); setTimeout(()=>playTone(1760,'sine',0.2),50); }
+        if(type==='hit') { playTone(400,'square',0.1); setTimeout(()=>playTone(600,'square',0.1),50); }
+        if(type==='win') { playTone(523,'triangle',0.2); setTimeout(()=>playTone(659,'triangle',0.1),100); setTimeout(()=>playTone(784,'triangle',0.4),200); }
     }
     function speak(text, force = false) {
         const now = Date.now();
         if (force || (now - lastSpeechTime > SPEECH_COOLDOWN)) {
-            const uttr = new SpeechSynthesisUtterance(text);
-            uttr.lang = 'ja-JP'; uttr.rate = 1.2;
-            window.speechSynthesis.speak(uttr);
-            lastSpeechTime = now;
+            const uttr = new SpeechSynthesisUtterance(text); uttr.lang = 'ja-JP'; uttr.rate = 1.2; window.speechSynthesis.speak(uttr); lastSpeechTime = now;
         }
     }
     function getNowStr() { return new Date().toLocaleString(); }
-    function calculateAngle(a, b, c) {
-        const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
-        let angle = Math.abs(radians * 180.0 / Math.PI);
-        if (angle > 180.0) angle = 360 - angle;
-        return angle;
-    }
+    function calculateAngle(a, b, c) { const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x); let angle = Math.abs(radians * 180.0 / Math.PI); if (angle > 180.0) angle = 360 - angle; return angle; }
     function fireConfetti() { confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 }, colors: ['#ffd700', '#00e676', '#2979ff'] }); }
-    function showComboEffect(val) {
-        els.comboDisp.innerText = val + " COMBO!";
-        els.comboDisp.classList.add("combo-active");
-        playSound('combo');
-        setTimeout(() => els.comboDisp.classList.remove("combo-active"), 800);
-    }
-    
+    function showComboEffect(val) { els.comboDisp.innerText = val + " COMBO!"; els.comboDisp.classList.add("combo-active"); playSound('hit'); setTimeout(() => els.comboDisp.classList.remove("combo-active"), 800); }
+
+    function updateRPE(val) { document.getElementById('rpe-val').innerText = val; surveyData.rpe = val; }
+    function setPain(val, btn) { surveyData.pain = val; document.querySelectorAll('.pain-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+
+    // Game Logic
+    function spawnMonster() { let lv = metrics.monsterLevel; if(lv >= MONSTERS.length) lv = MONSTERS.length - 1; const m = MONSTERS[lv]; els.monster.innerText = m[0]; els.monsterName.innerText = `Lv.${lv+1} ${m[1]}`; metrics.monsterHP = m[1]; updateHP(m[1], m[1]); }
+    function updateHP(cur, max) { const p = (cur / max) * 100; els.hpBar.style.width = p + "%"; els.hpText.innerText = `${cur} / ${max}`; }
     function updateScore(val) { metrics.score += val; els.gmScore.innerText = metrics.score; }
-    
-    function spawnMonster() {
-        let lv = metrics.monsterLevel;
-        if(lv >= MONSTERS.length) lv = MONSTERS.length - 1;
-        const m = MONSTERS[lv];
-        els.monster.innerText = m[0];
-        els.monsterName.innerText = `Lv.${lv+1} ${m[1]}`;
-        metrics.monsterHP = m[1];
-        updateHP(m[1], m[1]);
-        els.gmLvlVal.innerText = lv + 1;
-    }
-    
-    function updateHP(cur, max) { 
-        const p = (cur / max) * 100; 
-        els.hpBar.style.width = p + "%";
-        els.hpText.innerText = `${cur} / ${max}`;
-    }
-    
     function damageEffect(dmg, isCrit) {
-        metrics.monsterHP -= dmg;
-        if(metrics.monsterHP < 0) metrics.monsterHP = 0;
-        updateHP(metrics.monsterHP, MONSTERS[Math.min(metrics.monsterLevel, 4)][1]);
-        
-        els.monster.classList.remove('damage-shake');
-        void els.monster.offsetWidth; els.monster.classList.add('damage-shake');
+        metrics.monsterHP -= dmg; if(metrics.monsterHP < 0) metrics.monsterHP = 0; updateHP(metrics.monsterHP, MONSTERS[Math.min(metrics.monsterLevel, 4)][1]);
+        els.monster.classList.remove('damage-shake'); void els.monster.offsetWidth; els.monster.classList.add('damage-shake');
         if(isCrit) { playSound('crit'); fireConfetti(); } else { playSound('hit'); }
-        if(metrics.monsterHP <= 0) {
-            setTimeout(() => {
-                playSound('win'); speak("撃破！");
-                metrics.monsterLevel++; metrics.defeated++; spawnMonster();
-            }, 500);
+        if(metrics.monsterHP <= 0) { setTimeout(() => { playSound('win'); speak("撃破！"); metrics.monsterLevel++; metrics.defeated++; spawnMonster(); }, 500); }
+    }
+
+    // Flow Control
+    function selectCategory(cat) {
+        appState.exercise = cat;
+        if(cat === 'squat') {
+            getEl('main-menu').style.display = 'none'; getEl('squat-menu').style.display = 'flex';
+            setSquatMode('slow'); 
+        } else if(cat === 'measure') {
+            getEl('main-menu').style.display = 'none'; getEl('measure-menu').style.display = 'flex';
         }
     }
 
-    // 6. UI Control
-    function selectCategory(cat) {
-        appState.mode = cat;
-        if(cat === 'game') {
-            startAppLogic();
-        } else {
-            getEl('main-menu').style.display = 'none';
-            getEl('train-menu').style.display = 'flex';
-            setTrainMode('slow'); 
-        }
-    }
-    function setTrainMode(mode) {
+    function setSquatMode(mode) {
         appState.subMode = mode;
-        ['slow','self','cs30'].forEach(m => getEl('opt-'+m).classList.remove('selected'));
+        ['slow','self','cs30','game'].forEach(m => getEl('opt-'+m).classList.remove('selected'));
         getEl('opt-'+mode).classList.add('selected');
     }
+    
+    function setMode(ex, sub) {
+        appState.exercise = ex; appState.subMode = sub;
+        const container = els.measureMenu;
+        const btns = container.getElementsByClassName('sub-btn');
+        for(let b of btns) b.classList.remove('selected');
+        const btn = document.getElementById('opt-'+(ex==='squat'?'cs30':ex));
+        if(btn) btn.classList.add('selected');
+    }
+    
     function backToMain() {
-        getEl('train-menu').style.display = 'none';
+        getEl('squat-menu').style.display = 'none'; getEl('measure-menu').style.display = 'none';
         getEl('main-menu').style.display = 'flex';
     }
-    function startApp() { startAppLogic(); }
     
-    function startAppLogic() {
+    function startApp() {
         appState.patientID = getEl('patient-id').value || "Guest";
         els.startScreen.style.display = 'none';
+        initAudio(); speak("カメラを起動します");
         
-        // Mode Init
-        if(appState.mode === 'training') {
-            els.uiTraining.style.display = 'block';
-            els.uiGame.style.display = 'none';
-            if(appState.subMode === 'cs30') {
-                els.trTimer.style.display = 'block'; els.pacerContainer.style.display = 'none';
-            } else if(appState.subMode === 'slow') {
-                els.pacerContainer.style.display = 'block';
-                els.pacerGhost.style.top = "100%";
+        els.uiSquat.style.display = 'none'; els.uiBalance.style.display = 'none'; els.uiBanzai.style.display = 'none';
+        
+        if(appState.exercise === 'squat') {
+            els.uiSquat.style.display = 'block';
+            if(appState.subMode === 'game') {
+                els.uiGame.style.display = 'block'; els.uiTraining.style.display = 'none'; spawnMonster();
             } else {
-                els.pacerContainer.style.display = 'block';
+                els.uiTraining.style.display = 'block'; els.uiGame.style.display = 'none';
+                els.trTimer.style.display = (appState.subMode === 'cs30') ? 'block' : 'none';
+                els.trPacerBox.style.display = (appState.subMode === 'slow') ? 'block' : 'none';
             }
+            els.pacerContainer.style.display = (appState.subMode === 'cs30') ? 'none' : 'block';
+        } else if(appState.exercise === 'balance') {
+            els.uiBalance.style.display = 'block';
         } else {
-            els.uiTraining.style.display = 'none';
-            els.uiGame.style.display = 'block';
-            els.pacerContainer.style.display = 'block';
-            spawnMonster();
+            els.uiBanzai.style.display = 'block';
         }
 
-        initAudio();
-        speak("カメラを起動します");
-        const camera = new Camera(videoElement, {
-            onFrame: async () => { if(!appState.isFinished) await pose.send({image: videoElement}); },
-            width: 1280, height: 720
-        });
-        camera.start();
-        animatePacerLoop();
-    }
-
-    function updateGauge(angle) {
-        const min=180, max=70;
-        let p = (min - angle) / (min - max) * 100;
-        if(p<0)p=0; if(p>100)p=100;
-        els.depthBar.style.height = p + "%";
-        els.depthBar.style.backgroundColor = (angle < DEPTH_THRESHOLD) ? "#00e676" : "#00bcd4";
-        let tp = (min - DEPTH_THRESHOLD) / (min - max) * 100;
-        els.targetLine.style.top = tp + "%"; 
-        if(appState.subMode !== 'slow' && appState.mode !== 'cs30') els.pacerGhost.style.top = p + "%";
-    }
-
-    function animatePacerLoop() {
-        if(!appState.isFinished) {
-            if(appState.subMode === 'slow' && appState.isRunning) {
-                const t = (Date.now() - appState.startTime) % SLOW_CYCLE_MS;
-                let pos = 0;
-                if(t < 3000) pos = 100 - (t/3000*100);
-                else if(t < 6000) pos = (t-3000)/3000*100;
-                else pos = 100;
-                els.pacerGhost.style.top = pos + "%";
-            }
-            requestAnimationFrame(animatePacerLoop);
+        // グローバル変数としてカメラを保持
+        if(!window.camera) {
+            window.camera = new Camera(videoElement, {
+                onFrame: async () => { if(!appState.isFinished) await pose.send({image: videoElement}); },
+                width: 1280, height: 720
+            });
+            window.camera.start();
         }
+        if(appState.exercise === 'squat') animatePacerLoop();
     }
 
     function runCountdown() {
-        let c = 5;
-        els.countOverlay.style.display = 'flex';
-        if(appState.subMode === 'slow') {
-            els.countVal.innerText = "しゃがんで！"; els.countVal.style.fontSize = "60px";
-            speak("しゃがんで準備"); els.pacerGhost.style.top = "100%";
-        } else {
-            els.countVal.innerText = c; els.countVal.style.fontSize = "120px";
-            speak(String(c), true); playSound('count');
-        }
-        setTimeout(() => {
-            if(appState.subMode==='slow') { c=5; els.countVal.style.fontSize="120px"; }
-            const timer = setInterval(() => {
-                els.countVal.innerText = c;
-                speak(String(c), true);
-                if(c<=3) playSound('count');
-                c--;
-                if(c < 0) {
-                    clearInterval(timer);
-                    els.countVal.innerText = "START!";
-                    speak("スタート", true);
-                    playSound('start');
-                    setTimeout(() => {
-                        els.countOverlay.style.display = 'none';
-                        appState.startTime = Date.now();
-                        appState.isRunning = true;
-                    }, 1000);
-                }
-            }, 1000);
-        }, 1500);
+        let c = 5; els.countOverlay.style.display = 'flex'; els.countVal.innerText = c; playSound('count');
+        const timer = setInterval(() => {
+            c--; els.countVal.innerText = c; if(c > 0) playSound('count');
+            if(c <= 0) {
+                clearInterval(timer); els.countVal.innerText = "START!"; playSound('start');
+                setTimeout(() => { els.countOverlay.style.display = 'none'; appState.startTime = Date.now(); appState.isRunning = true; }, 1000);
+            }
+        }, 1000);
     }
 
     function finishSession() {
-        appState.isFinished = true;
-        appState.isRunning = false;
-        speak("終了です"); playSound('win');
-        document.querySelector('.container').style.display = 'none';
-        els.resScreen.style.display = 'flex';
-        getEl('res-reps').innerText = metrics.count;
-        if(appState.mode === 'game') {
-            getEl('game-result-area').style.display = 'block';
-            getEl('res-score-final').innerText = metrics.score;
-            let r = "B";
-            if(metrics.score > metrics.count * 120) r = "S"; else if(metrics.score > metrics.count * 100) r = "A";
-            getEl('res-rank').innerText = r;
-        }
-        const lbls = metrics.logs.map(d => d.rep);
-        const spds = metrics.logs.map(d => d.duration);
-        const dpts = metrics.logs.map(d => d.depth);
-        const clrs = metrics.logs.map(d => (d.note==="Perfect")?'#00e676':'#ff1744');
-        new Chart(getEl('speedChart'), {type:'line', data:{labels:lbls, datasets:[{label:'秒数', data:spds, borderColor:'#00e676', tension:0.3}] }});
-        new Chart(getEl('depthChart'), {type:'bar', data:{labels:lbls, datasets:[{label:'深さ', data:dpts, backgroundColor:clrs}]}, options:{scales:{y:{reverse:true, min:60, max:180}}, plugins:{legend:{display:false}}}});
+        appState.isFinished = true; appState.isRunning = false;
+        speak("終了です"); document.querySelector('.container').style.display = 'none'; els.surveyScreen.style.display = 'flex';
     }
 
-    // ★修正: Summary/Details 対応の送信ロジック
-    function sendToGoogleSheets() {
-        if(metrics.logs.length===0){alert("データなし");return;}
-        const btn=getEl('cloud-btn'); btn.innerText="送信中..."; btn.disabled=true;
+    function submitSurvey() {
+        els.surveyScreen.style.display = 'none'; els.resScreen.style.display = 'flex';
         
-        const sessionID = appState.patientID + "_" + Date.now();
-        const fatigue = getEl('res-fatigue').innerText;
-        
-        const payload = {
-            sessionID: sessionID,
-            summary: {
-                patientID: appState.patientID,
-                date: getNowStr(),
-                mode: appState.mode + "_" + appState.subMode,
-                reps: metrics.count,
-                score: metrics.score,
-                maxCombo: metrics.maxCombo,
-                fatigue: fatigue
-            },
-            logs: metrics.logs
-        };
+        if(appState.exercise === 'squat') {
+            getEl('res-squat-area').style.display = 'block'; getEl('res-simple-area').style.display = 'none';
+            getEl('res-reps').innerText = metrics.count;
+            if(appState.subMode === 'game') {
+                getEl('game-result-area').style.display = 'block'; getEl('res-score-final').innerText = metrics.score;
+                let r="B"; if(metrics.score>metrics.count*120)r="S"; else if(metrics.score>metrics.count*100)r="A"; getEl('res-rank').innerText = r;
+            } else { getEl('game-result-area').style.display = 'none'; }
 
+            const lbls = metrics.logs.map(d => d.rep);
+            const spds = metrics.logs.map(d => d.duration);
+            const dpts = metrics.logs.map(d => d.depth);
+            const clrs = metrics.logs.map(d => (d.note==="Perfect")?'#00e676':'#ff1744');
+            new Chart(getEl('speedChart'), {type:'line', data:{labels:lbls, datasets:[{label:'秒数', data:spds, borderColor:'#00e676', tension:0.3}] }});
+            new Chart(getEl('depthChart'), {type:'bar', data:{labels:lbls, datasets:[{label:'深さ', data:dpts, backgroundColor:clrs}]}, options:{scales:{y:{reverse:true, min:60, max:180}}}});
+            if(metrics.logs.length >= 6) {
+                const f = metrics.logs.slice(0,3).reduce((a,b)=>a+b.duration,0)/3;
+                const l = metrics.logs.slice(-3).reduce((a,b)=>a+b.duration,0)/3;
+                getEl('res-fatigue').innerText = (l/f).toFixed(2);
+            }
+        } else {
+            getEl('res-squat-area').style.display = 'none'; getEl('res-simple-area').style.display = 'block';
+            if(appState.exercise === 'balance') {
+                getEl('res-simple-label').innerText = "最大バランス時間";
+                getEl('res-simple-val').innerText = metrics.maxBalanceTime.toFixed(2) + " s";
+            } else {
+                getEl('res-simple-label').innerText = "最大可動域 (L/R)";
+                getEl('res-simple-val').innerText = `${Math.floor(metrics.maxAngleL)}° / ${Math.floor(metrics.maxAngleR)}°`;
+            }
+        }
+    }
+
+    function animatePacerLoop() {
+        if(!appState.isFinished && appState.subMode === 'slow') {
+            if(appState.isRunning && appState.startTime) {
+                const t = (Date.now() - appState.startTime) % SLOW_CYCLE_MS; let pos = 0;
+                if(t < 3000) pos = 100 - (t/3000*100); else if(t < 6000) pos = (t-3000)/3000*100; else pos = 100;
+                els.pacerGhost.style.top = pos + "%";
+                const cycles = Math.floor((Date.now() - appState.startTime) / SLOW_CYCLE_MS);
+                els.trPacerVal.innerText = cycles;
+            } else { els.pacerGhost.style.top = "100%"; }
+            requestAnimationFrame(animatePacerLoop);
+        }
+    }
+    
+    function checkBalance(lAnkle, rAnkle) {
+        const diff = Math.abs(lAnkle.y - rAnkle.y);
+        if(diff > 0.05) {
+            if(!metrics.isBalancing) { metrics.isBalancing = true; metrics.balanceStart = Date.now(); speak("計測中"); els.balStatus.innerText="計測中"; els.balStatus.style.color="#00e676"; }
+            const t = (Date.now() - metrics.balanceStart) / 1000;
+            metrics.currentBalanceTime = t;
+            if(t > metrics.maxBalanceTime) metrics.maxBalanceTime = t;
+            els.balTimer.innerText = t.toFixed(2);
+        } else {
+            if(metrics.isBalancing) { metrics.isBalancing = false; speak("ストップ"); els.balStatus.innerText="足をつきました"; els.balStatus.style.color="#ff1744"; els.balBest.innerText=metrics.maxBalanceTime.toFixed(2); }
+        }
+    }
+
+    function checkBanzai(sL, eL, sR, eR, hL, hR) {
+        const angL = calculateAngle(hL, sL, eL); const angR = calculateAngle(hR, sR, eR);
+        if(angL > metrics.maxAngleL) metrics.maxAngleL = angL; if(angR > metrics.maxAngleR) metrics.maxAngleR = angR;
+        els.bzAngleL.innerText = Math.floor(angL) + "°"; els.bzAngleR.innerText = Math.floor(angR) + "°";
+        els.bzBarL.style.height = (angL / 180 * 100) + "%"; els.bzBarR.style.height = (angR / 180 * 100) + "%";
+    }
+
+    function onResults(results) {
+        if(appState.isFinished) return;
+        
+        // カメラ準備完了検知
+        if(!appState.isCameraReady) {
+            appState.isCameraReady = true;
+            if(appState.exercise === 'squat') {
+                els.depthGaugeContainer.style.display = 'block'; 
+                els.targetLabel.style.display = 'block';
+                // スロトレとセルフならペーサー表示
+                if(appState.subMode === 'slow' || appState.subMode === 'self') els.pacerContainer.style.display='block';
+                
+                const needsCount = (appState.subMode==='game' || appState.subMode==='cs30' || appState.subMode==='slow');
+                if(needsCount) runCountdown();
+                else {
+                    appState.startTime = Date.now();
+                    appState.isRunning = true;
+                    speak("スタート");
+                }
+            } else {
+                appState.isRunning = true; speak("計測を開始します");
+            }
+        }
+
+        canvasElement.width = videoElement.videoWidth; canvasElement.height = videoElement.videoHeight;
+        canvasCtx.save(); canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+        if (results.poseLandmarks) {
+            const lms = results.poseLandmarks;
+            // ★ 骨格マーカーを最優先で描画
+            drawConnectors(canvasCtx, lms, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+            drawLandmarks(canvasCtx, lms, {color: '#FF0000', lineWidth: 2});
+
+            if(appState.exercise === 'balance') {
+                if(lms[27].visibility > 0.5 && lms[28].visibility > 0.5) checkBalance(lms[27], lms[28]);
+            } else if(appState.exercise === 'banzai') {
+                if(lms[11].visibility>0.5 && lms[23].visibility>0.5) checkBanzai(lms[11], lms[13], lms[12], lms[14], lms[23], lms[24]);
+            } else {
+                // Squat Logic
+                let side="RIGHT", sIdx=12, hIdx=24, kIdx=26, aIdx=28;
+                if(lms[11].visibility > lms[12].visibility) { side="LEFT"; sIdx=11; hIdx=23; kIdx=25; aIdx=27; }
+                if(lms[sIdx].visibility > 0.5 && lms[hIdx].visibility > 0.5) {
+                    const kneeAngle = calculateAngle(lms[hIdx], lms[kIdx], lms[aIdx]);
+                    const hipAngle = calculateAngle(lms[sIdx], lms[hIdx], lms[kIdx]);
+                    
+                    // UI
+                    const minAng=180, maxAng=70;
+                    let p = (minAng - kneeAngle) / (minAng - maxAng) * 100; if(p<0)p=0; if(p>100)p=100;
+                    els.depthBar.style.height = p + "%";
+                    let tp = (minAng - DEPTH_THRESHOLD) / (minAng - maxAng) * 100; els.targetLine.style.top = tp + "%";
+                    if(appState.subMode === 'self' || appState.subMode === 'game') els.pacerGhost.style.top = p + "%";
+
+                    canvasCtx.beginPath(); canvasCtx.moveTo(lms[sIdx].x*canvasElement.width, lms[sIdx].y*canvasElement.height); canvasCtx.lineTo(lms[hIdx].x*canvasElement.width, lms[hIdx].y*canvasElement.height); canvasCtx.lineTo(lms[kIdx].x*canvasElement.width, lms[kIdx].y*canvasElement.height); canvasCtx.strokeStyle = "yellow"; canvasCtx.lineWidth = 5; canvasCtx.stroke();
+
+                    let warning="", isKneeIn=false;
+                    if(side==="RIGHT" && lms[kIdx].x > lms[aIdx].x + KNEE_IN_THRESHOLD) isKneeIn=true;
+                    if(side==="LEFT" && lms[kIdx].x < lms[aIdx].x - KNEE_IN_THRESHOLD) isKneeIn=true;
+                    if(isKneeIn && kneeAngle < 160) { if(metrics.isMoving && metrics.isClean) { warning="ひざを開いて！"; metrics.isClean=false; speak("ひざ"); playSound('ng'); } }
+                    if(hipAngle < BAD_POSTURE_ANGLE && kneeAngle < 160) { if(metrics.isMoving && metrics.isClean) { warning="胸を張って！"; metrics.isClean=false; speak("むね"); playSound('ng'); } }
+                    if(warning) { els.warningMsg.innerText=warning; els.warningMsg.style.display='block'; } else { els.warningMsg.style.display='none'; }
+
+                    if(appState.isRunning) {
+                        if(kneeAngle < 165 && !metrics.isMoving) { metrics.isMoving=true; appState.repStart=Date.now(); metrics.minAngle=180; metrics.isDeep=false; metrics.isClean=true; }
+                        if(metrics.isMoving) {
+                            if(kneeAngle < metrics.minAngle) metrics.minAngle = kneeAngle;
+                            if(kneeAngle < DEPTH_THRESHOLD) metrics.isDeep=true;
+                            if(kneeAngle > RESET_ANGLE) {
+                                if(metrics.isDeep) {
+                                    metrics.count++;
+                                    const dur = (Date.now()-appState.repStart)/1000;
+                                    
+                                    if(appState.subMode==='game') {
+                                        let damage=0, isCrit=false;
+                                        if(metrics.isClean) {
+                                            metrics.combo++; if(metrics.combo>metrics.maxCombo) metrics.maxCombo=metrics.combo;
+                                            if(metrics.minAngle<100) { damage=150+metrics.combo*10; isCrit=true; } else { damage=100+metrics.combo*5; }
+                                            updateScore(damage); showComboEffect(metrics.combo);
+                                        } else {
+                                            metrics.combo=0; damage=10; updateScore(10); speak("おしい");
+                                        }
+                                        damageEffect(damage, isCrit);
+                                        els.gmComboVal.innerText = metrics.combo;
+                                    } else {
+                                        els.trReps.innerText=metrics.count; els.trSpeed.innerText=dur.toFixed(2);
+                                        if(metrics.isClean) speak("OK", true);
+                                    }
+                                    
+                                    let note="Perfect"; if(warning) note="Error";
+                                    metrics.logs.push({id:appState.patientID, time:getNowStr(), rep:metrics.count, depth:Math.floor(metrics.minAngle), duration:parseFloat(dur.toFixed(2)), note:note});
+                                }
+                                metrics.isMoving=false;
+                            }
+                        }
+                    }
+                    if(metrics.isDeep) { els.statusLamp.innerText="OK!"; els.statusLamp.className="status-lamp lamp-ready"; } else { els.statusLamp.innerText="しゃがむ"; els.statusLamp.className="status-lamp lamp-squat"; }
+                }
+            }
+        }
+        if(appState.subMode==='cs30' && appState.isRunning && !appState.isFinished) { const elap = (Date.now()-appState.startTime)/1000; let rem = 30-elap; if(rem<=0) { rem=0; finishSession(); } els.trTimer.innerText = Math.ceil(rem); }
+        canvasCtx.restore();
+    }
+
+    function sendToGoogleSheets() {
+        const btn=getEl('cloud-btn'); btn.innerText="送信中..."; btn.disabled=true;
+        const sID = appState.patientID + "_" + Date.now();
+        const fatigue = (appState.exercise==='squat') ? getEl('res-fatigue').innerText : "-";
+        let scoreVal = metrics.score, maxVal = metrics.maxCombo;
+        if(appState.exercise === 'balance') maxVal = metrics.maxBalanceTime;
+        if(appState.exercise === 'banzai') scoreVal = (metrics.maxAngleL + metrics.maxAngleR) / 2; 
+        const payload = {
+            sessionID: sID,
+            summary: {
+                patientID: appState.patientID, date: getNowStr(),
+                mode: appState.exercise + "_" + appState.subMode,
+                reps: metrics.count, score: scoreVal,
+                maxCombo: maxVal, fatigue: fatigue,
+                rpe: surveyData.rpe, pain: surveyData.pain
+            },
+            logs: metrics.logs 
+        };
         fetch(GAS_URL, {method:'POST', body:JSON.stringify(payload), headers:{"Content-Type":"text/plain"}})
-        .then(()=>{alert("完了"); btn.innerText="送信完了";})
-        .catch(e=>{alert("エラー: " + e); btn.disabled=false;});
+        .then(()=>{alert("完了"); btn.innerText="送信済み";})
+        .catch(e=>{alert("エラー"); btn.disabled=false;});
     }
 
     function downloadCSV() {
         let c = "ID,Time,Rep,Depth,Duration,Note\n";
         metrics.logs.forEach(r => c += `${r.id},${r.time},${r.rep},${r.depth},${r.duration},${r.note}\n`);
-        const a = document.createElement("a");
-        a.href = encodeURI("data:text/csv;charset=utf-8,"+c);
-        a.download = "log.csv"; a.click();
-    }
-
-    // 7. MediaPipe Main Loop
-    function onResults(results) {
-        if(appState.isFinished) return;
-
-        if(!appState.isCameraReady) {
-            appState.isCameraReady = true;
-            els.depthGaugeContainer.style.display = 'block';
-            els.targetLabel.style.display = 'block';
-            
-            if(appState.mode === 'training') {
-                if(appState.subMode==='cs30') { /* Timer */ }
-                else if(appState.subMode==='slow') els.pacerContainer.style.display='block';
-                else els.pacerContainer.style.display='block';
-            } else {
-                els.pacerContainer.style.display='block';
-            }
-
-            const needsCount = (appState.mode==='game' || appState.subMode==='cs30' || appState.subMode==='slow');
-            if(needsCount) runCountdown();
-            else {
-                appState.startTime = Date.now();
-                appState.isRunning = true;
-                speak("スタート");
-            }
-        }
-
-        const w = videoElement.videoWidth;
-        const h = videoElement.videoHeight;
-        canvasElement.width = w; canvasElement.height = h;
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, w, h);
-
-        if (results.poseLandmarks) {
-            const lms = results.poseLandmarks;
-            drawConnectors(canvasCtx, lms, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
-            drawLandmarks(canvasCtx, lms, {color: '#FF0000', lineWidth: 2});
-
-            let side = "RIGHT";
-            if (lms[11].visibility > lms[12].visibility) side = "LEFT";
-            let sIdx=(side==="RIGHT")?12:11, hIdx=(side==="RIGHT")?24:23, kIdx=(side==="RIGHT")?26:25, aIdx=(side==="RIGHT")?28:27;
-            const shoulder=lms[sIdx], hip=lms[hIdx], knee=lms[kIdx], ankle=lms[aIdx];
-
-            if(shoulder.visibility > 0.5 && hip.visibility > 0.5) {
-                const kneeAngle = calculateAngle(hip, knee, ankle);
-                const hipAngle = calculateAngle(shoulder, hip, knee);
-                updateGauge(kneeAngle);
-                
-                canvasCtx.beginPath();
-                canvasCtx.moveTo(shoulder.x*w, shoulder.y*h);
-                canvasCtx.lineTo(hip.x*w, hip.y*h);
-                canvasCtx.lineTo(knee.x*w, knee.y*h);
-                canvasCtx.strokeStyle = "yellow"; canvasCtx.lineWidth = 5; canvasCtx.stroke();
-
-                let warning=""; let isKneeIn=false;
-                if(side==="RIGHT" && knee.x > ankle.x + KNEE_IN_THRESHOLD) isKneeIn=true;
-                if(side==="LEFT" && knee.x < ankle.x - KNEE_IN_THRESHOLD) isKneeIn=true;
-
-                if(isKneeIn && kneeAngle < 160) {
-                    if(metrics.isMoving && metrics.isClean) {
-                        warning="ひざを開いて！"; metrics.isClean=false; speak("ひざ"); playSound('error');
-                    }
-                }
-                if(hipAngle < BAD_POSTURE_ANGLE && kneeAngle < 160) {
-                    if(metrics.isMoving && metrics.isClean) {
-                        warning="胸を張って！"; metrics.isClean=false; speak("むね"); playSound('error');
-                    }
-                }
-                
-                if(warning) { els.warningMsg.innerText=warning; els.warningMsg.style.display='block'; }
-                else { els.warningMsg.style.display='none'; }
-
-                if(appState.isRunning) {
-                    if(kneeAngle < 165 && !metrics.isMoving) {
-                        metrics.isMoving=true; appState.repStart=Date.now(); metrics.minAngle=180;
-                        metrics.isDeep=false; metrics.isClean=true; hasSpokenGood=false;
-                    }
-                    if(metrics.isMoving) {
-                        if(kneeAngle < metrics.minAngle) metrics.minAngle = kneeAngle;
-                        if(kneeAngle < DEPTH_THRESHOLD) {
-                            metrics.isDeep=true;
-                            if(!hasSpokenGood && metrics.isClean) { hasSpokenGood=true; }
-                        }
-                        if(kneeAngle > RESET_ANGLE) {
-                            if(metrics.isDeep) {
-                                metrics.count++;
-                                const duration = (Date.now()-appState.repStart)/1000;
-                                if(appState.mode==='training') {
-                                    els.trReps.innerText=metrics.count; els.trSpeed.innerText=duration.toFixed(2);
-                                    if(metrics.isClean) speak("OK", true);
-                                } else {
-                                    let damage=0, isCrit=false;
-                                    if(metrics.isClean) {
-                                        metrics.combo++; if(metrics.combo>metrics.maxCombo) metrics.maxCombo=metrics.combo;
-                                        if(metrics.minAngle<100) { damage=150+metrics.combo*10; isCrit=true; }
-                                        else { damage=100+metrics.combo*5; }
-                                        updateScore(damage); showComboEffect(metrics.combo);
-                                    } else {
-                                        metrics.combo=0; damage=10; updateScore(10); speak("おしい");
-                                    }
-                                    damageEffect(damage, isCrit);
-                                    els.gmComboVal.innerText = metrics.combo;
-                                }
-                                metrics.logs.push({
-                                    id: appState.patientID, time: getNowStr(),
-                                    rep: metrics.count, depth: Math.floor(metrics.minAngle),
-                                    duration: parseFloat(duration.toFixed(2)), note: metrics.isClean?"Perfect":"Error"
-                                });
-                            }
-                            metrics.isMoving=false; metrics.isDeep=false;
-                        }
-                    }
-                }
-            }
-        }
-
-        if(appState.subMode==='cs30' && appState.isRunning && !appState.isFinished) {
-            const elap = (Date.now()-appState.startTime)/1000;
-            let rem = 30-elap;
-            if(rem<=0) { rem=0; finishSession(); }
-            els.trTimer.innerText = Math.ceil(rem);
-        }
-        canvasCtx.restore();
+        const a = document.createElement("a"); a.href = encodeURI("data:text/csv;charset=utf-8,"+c); a.download = "log.csv"; a.click();
     }
 
     const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
